@@ -2,6 +2,15 @@
 
 [github.com/SVolsa/fluxlite](https://github.com/SVolsa/fluxlite)
 
+轻量级 AI 编码助手 · 终端原生 · 插件可扩展
+
+Lightweight AI coding agent — terminal-native, plugin-extensible.
+
+- **轻量**：单文件 EXE（~33MB）或 pip 安装，零运行时依赖
+- **原生**：真正的终端体验 — 流式输出、Markdown 渲染、命令补全
+- **可扩展**：插件系统 + MCP + Hooks，每个维度都可定制
+- **安全**：沙箱隔离文件操作，工具执行前确认，质量门禁
+
 <details open>
 <summary><b>中文</b> &nbsp;（点击切换到 English）</summary>
 
@@ -121,6 +130,11 @@ MIT
 <summary><b>English</b> &nbsp;（click to switch to 中文）</summary>
 
 <br>
+
+**Lightweight** — ~33MB standalone EXE or pip install, zero runtime deps.
+**Terminal-native** — streaming output, Markdown rendering, command completion.
+**Extensible** — plugin system + MCP + Hooks, customize at every layer.
+**Safe** — sandbox isolates file ops, confirm-before-execute, quality gates.
 
 ## Install
 
