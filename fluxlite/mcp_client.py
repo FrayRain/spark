@@ -89,7 +89,7 @@ def start_server(name: str, cmd: str, args: list[str], env: dict | None = None) 
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "fluxlite", "version": "0.5.4"},
+            "clientInfo": {"name": "fluxlite", "version": "0.5.6"},
         },
     }
     resp = _send(proc, init_req)

@@ -14,12 +14,17 @@ from .i18n import _, set_lang
 console = Console()
 
 API_PRESETS = {
-    "1": {"name": "DeepSeek", "base_url": "https://api.deepseek.com", "model": "deepseek-chat"},
-    "2": {"name": "OpenAI", "base_url": "https://api.openai.com/v1", "model": "gpt-4o-mini"},
-    "3": {"name": "Anthropic Claude", "base_url": "https://api.anthropic.com", "model": "claude-sonnet-4-20250514"},
-    "4": {"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1", "model": "openai/gpt-4o-mini"},
-    "5": {"name": "Groq", "base_url": "https://api.groq.com/openai/v1", "model": "llama-3.3-70b-versatile"},
-    "6": {"name": "Custom (自定义/Custom)", "base_url": "", "model": ""},
+    "1": {"name": "DeepSeek", "base_url": "https://api.deepseek.com",
+          "models": ["deepseek-v4-flash", "deepseek-v4-pro", "deepseek-chat", "deepseek-reasoner"]},
+    "2": {"name": "OpenAI", "base_url": "https://api.openai.com/v1",
+          "models": ["gpt-4.1", "gpt-4.1-mini", "gpt-4.1-nano", "o3", "o4-mini"]},
+    "3": {"name": "Anthropic Claude", "base_url": "https://api.anthropic.com",
+          "models": ["claude-sonnet-4-6", "claude-opus-4-7", "claude-haiku-4-5-20251001"]},
+    "4": {"name": "OpenRouter", "base_url": "https://openrouter.ai/api/v1",
+          "models": ["openai/gpt-4.1", "deepseek/deepseek-v4-flash", "anthropic/claude-sonnet-4-6", "qwen/qwen3-32b"]},
+    "5": {"name": "Groq", "base_url": "https://api.groq.com/openai/v1",
+          "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"]},
+    "6": {"name": "Custom (自定义/Custom)", "base_url": "", "models": []},
 }
 
 try:
@@ -94,11 +99,18 @@ def run_wizard():
 
     if api_choice == "6":
         base_url = _prompt("API Base URL (e.g. https://api.deepseek.com)")
-        model = _prompt("Default Model (e.g. deepseek-chat)")
+        model = _prompt("Model name (e.g. deepseek-chat)")
     else:
         base_url = preset["base_url"]
-        model = preset["model"]
-        _ok(f"Model auto-set: {model}")
+        models = preset["models"]
+        model_options = {str(i+1): {"name": m} for i, m in enumerate(models)}
+        model_options["c"] = {"name": "[Custom / 自定义]"}
+        model_choice = _select(f"Model for {preset['name']}", model_options)
+        if model_choice == "c":
+            model = _prompt(f"Model name (e.g. {models[0]})")
+        else:
+            model = models[int(model_choice) - 1]
+            _ok(f"Model selected: {model}")
 
     _section(_("api_key_setup") if lang == "zh" else "API Key")
     _info("Paste your API key / \u7c98\u8d34\u4f60\u7684 API Key")
