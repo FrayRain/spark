@@ -31,4 +31,7 @@ Thumbs.db
 # Project local
 fluxlite.egg-info/
 
+# Claude local settings (may contain API keys)
+.claude/
+
 # User config (kept in ~/.fluxlite, not in repo)

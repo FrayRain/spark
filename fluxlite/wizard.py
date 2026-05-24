@@ -92,12 +92,13 @@ def run_wizard():
     api_choice = _select("Provider", API_PRESETS)
     preset = API_PRESETS[api_choice]
 
-    base_url = preset["base_url"]
-    default_model = preset["model"]
-
     if api_choice == "6":
         base_url = _prompt("API Base URL (e.g. https://api.deepseek.com)")
-        default_model = _prompt("Default Model (e.g. deepseek-chat)")
+        model = _prompt("Default Model (e.g. deepseek-chat)")
+    else:
+        base_url = preset["base_url"]
+        model = preset["model"]
+        _ok(f"Model auto-set: {model}")
 
     _section(_("api_key_setup") if lang == "zh" else "API Key")
     _info("Paste your API key / \u7c98\u8d34\u4f60\u7684 API Key")
@@ -107,9 +108,6 @@ def run_wizard():
     if not api_key:
         _warn("API Key is required / API Key \u4e0d\u80fd\u4e3a\u7a7a")
         api_key = _prompt("API Key (输入API密钥)")
-
-    _section("Model / \u6a21\u578b")
-    model = _prompt("Model name", default=default_model)
 
     _section(_("test_connection") if lang == "zh" else "Test Connection")
     _info("Testing API connection...")

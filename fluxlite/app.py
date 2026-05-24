@@ -79,13 +79,13 @@ def _setup_identity(profile):
     console.print(f"\n  [{CYAN}]Identity Setup (首次设置身份)[/]")
     console.print(f"  [{GRAY}]Let's get to know each other![/]")
 
-    user_name = get_input(f"  [{GREEN}]What should I call you? (如何称呼你)[/]: ")
+    user_name = _ask_input(f"  [{GREEN}]What should I call you? (如何称呼你)[/]: ")
     profile["identity"]["user_name"] = user_name.strip() if user_name.strip() else "User"
 
-    name = get_input(f"  [{CYAN}]What would you like to name me? (给我取个名字)[/]: ")
+    name = _ask_input(f"  [{CYAN}]What would you like to name me? (给我取个名字)[/]: ")
     profile["identity"]["name"] = name.strip() if name.strip() else "FluxLite"
 
-    personality = get_input(f"  [{PURPLE}]Describe my personality (optional / 描述我的性格)[/]: ")
+    personality = _ask_input(f"  [{PURPLE}]Describe my personality (optional / 描述我的性格)[/]: ")
     profile["identity"]["personality"] = personality.strip() if personality.strip() else ""
 
     profile["identity"]["created_at"] = datetime.now().isoformat()
