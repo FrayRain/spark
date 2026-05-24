@@ -19,10 +19,10 @@ Lightweight AI coding agent — terminal-native, plugin-extensible.
 ## 安装
 
 ```
-pip install git+https://github.com/SVolsa/fluxlite.git
+pip install fluxlite
 ```
 
-或本地安装：
+或从源码安装：
 
 ```
 git clone https://github.com/SVolsa/fluxlite.git
@@ -139,10 +139,10 @@ MIT
 ## Install
 
 ```
-pip install git+https://github.com/SVolsa/fluxlite.git
+pip install fluxlite
 ```
 
-Or from local:
+Or from source:
 
 ```
 git clone https://github.com/SVolsa/fluxlite.git
