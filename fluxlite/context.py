@@ -2,6 +2,7 @@
 import subprocess
 from pathlib import Path
 from datetime import datetime
+from .i18n import _
 
 # ── Constants ──
 
@@ -85,41 +86,43 @@ def build_project_tree(max_depth: int = PROJECT_TREE_DEPTH,
 
 
 def build_git_context() -> str:
-    """Collect git branch, status, diff stat, and recent log."""
+    """Collect git branch, status, and recent log in parallel."""
+    import subprocess as _sp
     try:
-        parts = []
-        branch = subprocess.run(
-            ["git", "branch", "--show-current"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
-        if branch:
-            parts.append(f"Branch: {branch}")
-        else:
+        # Run independent git commands in parallel
+        proc_branch = _sp.Popen(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
+        )
+        proc_status = _sp.Popen(
+            ["git", "status", "--short"],
+            stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
+        )
+        proc_log = _sp.Popen(
+            ["git", "log", "--oneline", "-5"],
+            stdout=_sp.PIPE, stderr=_sp.PIPE, text=True,
+        )
+
+        branch_out, _ = proc_branch.communicate(timeout=5)
+        status_out, _ = proc_status.communicate(timeout=5)
+        log_out, _ = proc_log.communicate(timeout=5)
+
+        branch = branch_out.strip()
+        if not branch or branch.startswith("fatal"):
             return ""
 
-        status = subprocess.run(
-            ["git", "status", "--short"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        parts = [f"Branch: {branch}"]
+
+        status = status_out.strip()
         if status:
             parts.append(f"Status:\n{status}")
 
-        diff_stat = subprocess.run(
-            ["git", "diff", "--stat"],
-            capture_output=True, text=True, timeout=10,
-        ).stdout.strip()
-        if diff_stat:
-            parts.append(f"Unstaged:\n{diff_stat}")
-
-        log = subprocess.run(
-            ["git", "log", "--oneline", "-5"],
-            capture_output=True, text=True, timeout=5,
-        ).stdout.strip()
+        log = log_out.strip()
         if log:
             parts.append(f"Recent:\n{log}")
 
         return "\n\n".join(parts)
-    except (subprocess.TimeoutExpired, OSError, PermissionError):
+    except (_sp.TimeoutExpired, OSError, PermissionError):
         return ""
 
 
@@ -131,9 +134,9 @@ def generate_fluxlite_md(console, radio_select) -> None:
     target = cwd / "FLUXLITE.md"
 
     if target.exists():
-        choice = radio_select("FLUXLITE.md already exists. Overwrite?", [
-            ("overwrite", "Overwrite"),
-            ("cancel", "Cancel"),
+        choice = radio_select(_("proj_fluxlite_exists"), [
+            ("overwrite", _("proj_overwrite")),
+            ("cancel", _("proj_cancel")),
         ])
         if choice != "overwrite":
             return
@@ -256,8 +259,8 @@ def generate_fluxlite_md(console, radio_select) -> None:
     try:
         target.write_text(content, encoding="utf-8")
     except (OSError, PermissionError):
-        console.print(f"  [red]Failed to write FLUXLITE.md[/]")
+        console.print(f"  [red]{_('proj_write_failed')}[/]")
         return
-    console.print(f"  [green]FLUXLITE.md generated ({len(content)} chars)[/]")
+    console.print(f"  [green]{_('proj_generated_ok', len=len(content))}[/]")
     console.print(f"  [dim]Edit: {target}[/]")
-    console.print(f"  [dim]Restart FluxLite to load project context.[/]")
+    console.print(f"  [dim]{_('proj_restart_hint')}[/]")

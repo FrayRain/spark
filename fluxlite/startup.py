@@ -6,6 +6,7 @@ from rich.console import Console
 from rich.text import Text
 from rich.style import Style
 from .styles import CYAN, PURPLE, GREEN, GRAY
+from . import __version__ as _fluxlite_version
 
 console = Console()
 
@@ -70,7 +71,7 @@ def print_header(model: str = ""):
 
     box_w = max(min(term_w, 100), logo_w + 4)
     inner = box_w - 2
-    label = "FluxLite v1.0"
+    label = f"FluxLite {_fluxlite_version}"
 
     top_prefix = f"╭───{label} "
     top_remain = box_w - len(top_prefix) - 1
@@ -99,7 +100,7 @@ def print_header(model: str = ""):
         left_raw.append(("Model:", model))
 
     right_raw = [
-        ("Version", "0.5.7"),
+        ("Version", _fluxlite_version.lstrip("v")),
         ("Author:", "Volsa"),
         ("GitHub:", "svolsa"),
     ]

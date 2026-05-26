@@ -1,11 +1,15 @@
-"""Code execution tool with auto-linting for Python.
+"""Code execution tool with auto-linting and auto-fix for Python.
 
 Supports arbitrary shell commands (npm, cargo, go, curl, etc.)."""
 import subprocess
 import sys
 import ast
 import re
+import tempfile
+import difflib
+from pathlib import Path
 
+from ..i18n import _
 from .sandbox import _SandboxState
 
 DESTRUCTIVE_PATTERNS = [
@@ -59,7 +63,7 @@ def _run_lint(code: str) -> str:
             r = subprocess.run(
                 cmd,
                 input=code,
-                capture_output=True, text=True, timeout=10,
+                capture_output=True, encoding="utf-8", errors="replace", timeout=10,
             )
             stderr = (r.stderr or "").strip()
             stdout = (r.stdout or "").strip()
@@ -73,13 +77,90 @@ def _run_lint(code: str) -> str:
             pass
 
     if not issues:
-        return "[lint] OK"
+        return _("exec_lint_ok")
     return "\n".join(issues[:12])
 
 
-def execute(language: str, code: str, workdir: str = None, timeout: int = None) -> str:
+def _auto_fix_code(code: str) -> tuple[str, str]:
+    """Attempt to auto-fix Python code using available formatters/linters.
+    Returns (fixed_code, report)."""
+    fixers = [
+        ("ruff", [sys.executable, "-m", "ruff", "check", "--fix", "--stdin-filename", "_.py", "-"],
+         True),  # stdin mode
+        ("ruff format", [sys.executable, "-m", "ruff", "format", "--stdin-filename", "_.py", "-"],
+         True),
+        ("autopep8", [sys.executable, "-m", "autopep8", "-"], True),
+        ("black", [sys.executable, "-m", "black", "-q", "-"], True),
+    ]
+
+    for name, cmd, use_stdin in fixers:
+        try:
+            r = subprocess.run(
+                cmd,
+                input=code,
+                capture_output=True,
+                encoding="utf-8",
+                errors="replace",
+                timeout=15,
+            )
+        except (FileNotFoundError, OSError, subprocess.TimeoutExpired):
+            continue
+
+        if r.returncode == 0 and r.stdout and r.stdout.strip():
+            fixed = r.stdout.strip()
+            if fixed != code.strip():
+                diff = list(difflib.unified_diff(
+                    code.strip().split("\n"),
+                    fixed.split("\n"),
+                    fromfile="before",
+                    tofile=f"after ({name})",
+                    lineterm="",
+                ))
+                diff_str = "\n".join(diff[:20]) if diff else "(no diff)"
+                return fixed, f"[auto-fix] {name} applied\n{diff_str}"
+        elif r.returncode == 0 and not (r.stdout or "").strip():
+            # Formatter may write to stdout only when changes are made
+            # Try with temp file for formatters like black that write in-place
+            if not use_stdin:
+                continue
+            try:
+                with tempfile.NamedTemporaryFile(
+                    mode="w", suffix=".py", delete=False, encoding="utf-8"
+                ) as f:
+                    f.write(code)
+                    tmp = f.name
+                r2 = subprocess.run(
+                    cmd[:-1] + [tmp] if use_stdin else cmd + [tmp],
+                    capture_output=True,
+                    encoding="utf-8",
+                    errors="replace",
+                    timeout=15,
+                )
+                result = Path(tmp).read_text(encoding="utf-8")
+                Path(tmp).unlink(missing_ok=True)
+                if result != code:
+                    diff = list(difflib.unified_diff(
+                        code.strip().split("\n"),
+                        result.strip().split("\n"),
+                        fromfile="before",
+                        tofile=f"after ({name})",
+                        lineterm="",
+                    ))
+                    diff_str = "\n".join(diff[:20]) if diff else "(no diff)"
+                    return result, f"[auto-fix] {name} applied\n{diff_str}"
+            except (OSError, Exception):
+                try:
+                    Path(tmp).unlink(missing_ok=True)
+                except OSError:
+                    pass
+                continue
+
+    return code, "[auto-fix] No fixer available or no changes needed"
+
+
+def execute(language: str, code: str, workdir: str = None, timeout: int = None, lint_fix: bool = False) -> str:
     if _check_blocked(code):
-        return "[error] Blocked: potentially destructive command detected"
+        return _("exec_blocked")
 
     exec_timeout = timeout or DEFAULT_TIMEOUT
     if workdir:
@@ -93,43 +174,71 @@ def execute(language: str, code: str, workdir: str = None, timeout: int = None) 
         try:
             ast.parse(code)
         except SyntaxError as e:
-            return f"[error] Syntax error: {e}"
+            return _("exec_syntax_error", e=e)
 
         try:
             result = subprocess.run(
                 [sys.executable, "-c", code],
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=exec_timeout,
                 cwd=cwd,
             )
         except subprocess.TimeoutExpired:
-            return f"[error] Execution timed out after {exec_timeout}s"
+            return _("exec_timed_out", timeout=exec_timeout)
         except Exception as e:
-            return f"[error] Execution error: {e}"
+            return _("exec_error", e=e)
 
         if result.stdout:
             lines = result.stdout.rstrip().split("\n")
             if len(lines) > MAX_OUTPUT_LINES:
                 lines = lines[:MAX_OUTPUT_LINES]
-                lines.append(f"... ({len(lines) - MAX_OUTPUT_LINES} more lines)")
+                lines.append(_("exec_output_truncated", n=len(lines) - MAX_OUTPUT_LINES))
             output_parts.append("[output]\n" + "\n".join(lines))
 
         if result.stderr:
             lines = result.stderr.rstrip().split("\n")
             if len(lines) > MAX_OUTPUT_LINES:
                 lines = lines[:MAX_OUTPUT_LINES]
-                lines.append(f"... ({len(lines) - MAX_OUTPUT_LINES} more lines)")
+                lines.append(_("exec_output_truncated", n=len(lines) - MAX_OUTPUT_LINES))
             output_parts.append("[stderr]\n" + "\n".join(lines))
 
         if result.returncode != 0:
-            output_parts.append(f"[error] Exit code: {result.returncode}")
+            output_parts.append(_("exec_exit_code", code=result.returncode))
 
         if not output_parts:
-            output_parts.append("[output] (no output)")
+            output_parts.append(_("exec_no_output"))
 
         lint = _run_lint(code)
         output_parts.append(f"\n[lint]\n{lint}")
+
+        if lint_fix and lint != _("exec_lint_ok"):
+            fixed_code, fix_report = _auto_fix_code(code)
+            if fixed_code != code:
+                output_parts.append(f"\n{fix_report}")
+                # Re-run fixed code
+                try:
+                    r2 = subprocess.run(
+                        [sys.executable, "-c", fixed_code],
+                        capture_output=True,
+                        encoding="utf-8",
+                        errors="replace",
+                        timeout=exec_timeout,
+                        cwd=cwd,
+                    )
+                    if r2.stdout:
+                        output_parts.append("[re-run output]\n" + r2.stdout.rstrip()[:2000])
+                    if r2.stderr:
+                        output_parts.append("[re-run stderr]\n" + r2.stderr.rstrip()[:1000])
+                    if r2.returncode != 0:
+                        output_parts.append(f"[re-run] Exit code: {r2.returncode}")
+                    else:
+                        output_parts.append("[re-run] OK")
+                except (subprocess.TimeoutExpired, Exception) as e:
+                    output_parts.append(f"[re-run] Error: {e}")
+            else:
+                output_parts.append(f"\n{fix_report}")
 
     elif language in ("bash", "shell"):
         try:
@@ -137,36 +246,37 @@ def execute(language: str, code: str, workdir: str = None, timeout: int = None) 
                 code,
                 shell=True,
                 capture_output=True,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 timeout=exec_timeout,
                 cwd=cwd,
             )
         except subprocess.TimeoutExpired:
-            return f"[error] Execution timed out after {exec_timeout}s"
+            return _("exec_timed_out", timeout=exec_timeout)
         except Exception as e:
-            return f"[error] Execution error: {e}"
+            return _("exec_error", e=e)
 
         if result.stdout:
             lines = result.stdout.rstrip().split("\n")
             if len(lines) > MAX_OUTPUT_LINES:
                 lines = lines[:MAX_OUTPUT_LINES]
-                lines.append(f"... ({len(lines) - MAX_OUTPUT_LINES} more lines)")
+                lines.append(_("exec_output_truncated", n=len(lines) - MAX_OUTPUT_LINES))
             output_parts.append("[output]\n" + "\n".join(lines))
 
         if result.stderr:
             lines = result.stderr.rstrip().split("\n")
             if len(lines) > MAX_OUTPUT_LINES:
                 lines = lines[:MAX_OUTPUT_LINES]
-                lines.append(f"... ({len(lines) - MAX_OUTPUT_LINES} more lines)")
+                lines.append(_("exec_output_truncated", n=len(lines) - MAX_OUTPUT_LINES))
             output_parts.append("[stderr]\n" + "\n".join(lines))
 
         if result.returncode != 0:
-            output_parts.append(f"[error] Exit code: {result.returncode}")
+            output_parts.append(_("exec_exit_code", code=result.returncode))
 
         if not output_parts:
-            output_parts.append("[output] (no output)")
+            output_parts.append(_("exec_no_output"))
 
     else:
-        return f"[error] Unsupported language: {language} (use python, bash, or shell)"
+        return _("exec_unsupported_lang", lang=language)
 
     return "\n".join(output_parts)

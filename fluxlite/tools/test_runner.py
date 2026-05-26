@@ -3,6 +3,7 @@ import shlex
 import subprocess
 import re
 from pathlib import Path
+from ..i18n import _
 
 _TIMEOUT = 120
 
@@ -25,7 +26,7 @@ def run_tests(command: str, path: str = ".", timeout: int = _TIMEOUT) -> str:
             cwd=root,
         )
     except subprocess.TimeoutExpired:
-        return f"[error] Tests timed out after {timeout}s"
+        return _("test_timed_out", timeout=timeout)
     except Exception as e:
         return f"[error] Failed to run tests: {e}"
 
@@ -76,7 +77,7 @@ def run_tests(command: str, path: str = ".", timeout: int = _TIMEOUT) -> str:
         output_parts.extend(["  " + l for l in lines])
 
     if result.returncode != 0 and not summary and not stderr.strip() and not stdout_clean:
-        output_parts.append(f"[error] Tests failed with exit code {result.returncode}")
+        output_parts.append(_("test_failed", code=result.returncode))
 
     output_parts.append(f"\n[exit code: {result.returncode}]")
     return "\n".join(output_parts)

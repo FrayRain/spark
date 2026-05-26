@@ -6,6 +6,7 @@ Uses non-streaming chat for efficiency.
 import json
 import threading
 from ..provider import create_provider
+from ..i18n import _
 
 _provider_config: dict = {}
 
@@ -55,7 +56,7 @@ def _run_subagent(task_desc: str, tool_names: list[str] | None, system_prompt: s
         try:
             result = provider.chat(messages, tool_schemas)
         except Exception as e:
-            return f"[subagent] LLM error: {e}"
+            return _("subagent_llm_error", e=e)
 
         content = result.content or ""
         tool_calls = result.tool_calls or []
@@ -78,17 +79,17 @@ def _run_subagent(task_desc: str, tool_names: list[str] | None, system_prompt: s
             tool_result = execute_tool(tc.name, tc.arguments)
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": tool_result})
 
-    return "[subagent] Max turns reached"
+    return _("subagent_max_turns")
 
 
 def spawn_agents_handler(tasks_json: str, timeout: int = 300) -> str:
     try:
         tasks = json.loads(tasks_json)
     except json.JSONDecodeError as e:
-        return f"[error] Invalid tasks JSON: {e}"
+        return _("subagent_invalid_json", e=e)
 
     if not isinstance(tasks, list):
-        return "[error] tasks must be a JSON array"
+        return _("subagent_not_array")
 
     if not _provider_config:
         return "[error] Sub-agent not initialized (missing provider config)"
@@ -116,16 +117,16 @@ def spawn_agents_handler(tasks_json: str, timeout: int = 300) -> str:
 
     for i, t in enumerate(threads):
         if t.is_alive():
-            results[i] = "[subagent] TIMEOUT"
+            results[i] = _("subagent_timeout")
 
     lines = []
     for i, task in enumerate(tasks):
         result = results.get(i, "[subagent] No result")
         task_label = task.get("task", f"Task {i+1}")[:80]
-        lines.append(f"=== Agent {i+1}: {task_label} ===")
+        lines.append(_("subagent_result_header", i=i+1, label=task_label))
         lines.append(result[:2000])
         if len(result) > 2000:
-            lines.append("...(truncated)")
+            lines.append(_("subagent_truncated"))
         lines.append("")
 
     return "\n".join(lines).strip()

@@ -10,6 +10,7 @@ from rich.columns import Columns
 from .styles import CYAN, GREEN, PURPLE, ORANGE, RED, BLUE, YELLOW, DIM
 from .config import CONFIG_PATH, CONFIG_DIR, save_config, load_config
 from .i18n import _, set_lang
+from . import __version__ as _fluxlite_version
 
 console = Console()
 
@@ -34,7 +35,7 @@ try:
         f"  [bold cyan]{line}[/]" for line in _figlet_logo.rstrip("\n").split("\n")
     )
 except ImportError:
-    WIZARD_LOGO = "\n  [bold cyan]===== FluxLite v0.5.2 =====[/]\n"
+    WIZARD_LOGO = f"\n  [bold cyan]===== FluxLite {_fluxlite_version} =====[/]\n"
 
 
 def _section(title: str):
@@ -91,7 +92,7 @@ def run_wizard():
 
     console.print(f"\n  [{GREEN}]\u2713 Language set to: {lang}[/]")
 
-    _section(_("api_provider") if lang == "zh" else "API Provider")
+    _section(_("api_provider"))
     _info("Select your LLM provider / \u9009\u62e9 LLM \u670d\u52a1\u5546")
 
     api_choice = _select("Provider", API_PRESETS)
@@ -112,7 +113,7 @@ def run_wizard():
             model = models[int(model_choice) - 1]
             _ok(f"Model selected: {model}")
 
-    _section(_("api_key_setup") if lang == "zh" else "API Key")
+    _section(_("api_key_setup"))
     _info("Paste your API key / \u7c98\u8d34\u4f60\u7684 API Key")
     _info(f"  {base_url}")
     api_key = _prompt("API Key (输入API密钥)")
@@ -121,7 +122,7 @@ def run_wizard():
         _warn("API Key is required / API Key \u4e0d\u80fd\u4e3a\u7a7a")
         api_key = _prompt("API Key (输入API密钥)")
 
-    _section(_("test_connection") if lang == "zh" else "Test Connection")
+    _section(_("test_connection"))
     _info("Testing API connection...")
 
     try:
@@ -145,7 +146,7 @@ def run_wizard():
     if _confirm("Setup web search (Tavily)? / \u8bbe\u7f6e\u7f51\u7edc\u641c\u7d22?", default=False):
         tavily_key = _prompt("Tavily API Key (get at https://tavily.com)")
 
-    _section(_("saving") if lang == "zh" else "Save Configuration")
+    _section(_("saving"))
     config = {
         "api": {"key": api_key, "base_url": base_url, "model": model},
         "tavily": {"key": tavily_key},

@@ -5,6 +5,7 @@ Requires: pip install playwright && playwright install chromium
 
 import json
 from pathlib import Path
+from ..i18n import _
 
 _HAS_PLAYWRIGHT = False
 try:
@@ -74,7 +75,7 @@ def browser_handler(
 
     if action == "close":
         _cleanup()
-        return "Browser closed"
+        return _("browser_closed")
 
     try:
         page = _get_page()
@@ -86,21 +87,21 @@ def browser_handler(
     try:
         if action == "open":
             if not url:
-                return "Error: url is required"
+                return _("browser_no_url")
             page.goto(url, timeout=timeout_ms, wait_until="domcontentloaded")
-            return f"Navigated to {url}\nTitle: {page.title()}"
+            return _("browser_navigated", url=url, title=page.title())
 
         elif action == "click":
             if not selector:
                 return "Error: selector is required"
             page.click(selector, timeout=timeout_ms)
-            return f"Clicked {selector}"
+            return _("browser_clicked", selector=selector)
 
         elif action == "fill":
             if not selector or not text:
                 return "Error: both selector and text are required"
             page.fill(selector, text, timeout=timeout_ms)
-            return f"Filled {selector} with '{text[:100]}{'...' if len(text) > 100 else ''}'"
+            return _("browser_filled", selector=selector, text=text[:100])
 
         elif action == "html":
             html = page.content()
@@ -152,14 +153,11 @@ def browser_handler(
             dest = Path(text or "screenshot.png")
             dest.parent.mkdir(parents=True, exist_ok=True)
             page.screenshot(path=str(dest), full_page=False)
-            return f"Screenshot saved to {dest.resolve()}"
+            return _("browser_screenshot_ok", path=str(dest.resolve()))
 
         else:
-            return (
-                f"Unknown action: {action}. Supported: open, click, fill, html, "
-                "text, title, evaluate, screenshot, close"
-            )
+            return _("browser_unknown_action", action=action)
 
     except Exception as e:
         err = str(e)[:500]
-        return f"Browser error ({action}): {err}"
+        return _("browser_error", action=action, err=err)

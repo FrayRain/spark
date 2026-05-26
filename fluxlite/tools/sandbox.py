@@ -11,6 +11,7 @@ import difflib
 import shutil
 import tempfile
 from pathlib import Path
+from ..i18n import _
 
 
 class _SandboxState:
@@ -52,7 +53,7 @@ class _SandboxState:
     @classmethod
     def review(cls) -> str:
         if not cls._temp_dir or not cls._original_cwd:
-            return "Sandbox not active"
+            return _("sandbox_not_active")
         diffs = []
         for f in cls._temp_dir.rglob("*"):
             if not f.is_file():
@@ -80,13 +81,13 @@ class _SandboxState:
             except (OSError, PermissionError, UnicodeDecodeError):
                 continue
         if not diffs:
-            return "No pending changes in sandbox"
+            return _("sandbox_no_changes")
         return "\n\n".join(diffs)
 
     @classmethod
     def apply(cls) -> str:
         if not cls._temp_dir or not cls._original_cwd:
-            return "Sandbox not active"
+            return _("sandbox_not_active")
         count = 0
         for f in cls._temp_dir.rglob("*"):
             if not f.is_file():
@@ -99,7 +100,7 @@ class _SandboxState:
                 count += 1
             except (OSError, PermissionError):
                 continue
-        return f"Applied {count} file(s) from sandbox to project"
+        return _("sandbox_applied", count=count)
 
     @classmethod
     def discard(cls) -> str:
@@ -113,19 +114,19 @@ class _SandboxState:
         except OSError:
             cls._temp_dir = None
             return "Sandbox discard failed"
-        return "Sandbox discarded (fresh empty sandbox created)"
+        return _("sandbox_discard_ok")
 
     @classmethod
     def status(cls) -> str:
         if not cls.is_active():
-            return "Sandbox: disabled"
+            return _("sandbox_status_disabled")
         count = 0
         if cls._temp_dir:
             try:
                 count = sum(1 for _ in cls._temp_dir.rglob("*") if _.is_file())
             except OSError:
                 count = -1
-        return f"Sandbox: enabled  files: {count}  dir: {cls._temp_dir}"
+        return _("sandbox_status_enabled", count=count, dir=str(cls._temp_dir))
 
 
 def resolve_path(path_str: str) -> str:

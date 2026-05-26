@@ -5,6 +5,7 @@ import time as _time
 from html.parser import HTMLParser
 from pathlib import Path
 import httpx
+from ..i18n import _
 
 
 def http_request_handler(
@@ -15,7 +16,7 @@ def http_request_handler(
     timeout: int = 30,
 ) -> str:
     if not url:
-        return "Error: url is required"
+        return _("http_no_url")
 
     method = method.upper()
     if method not in ("GET", "POST", "PUT", "DELETE", "HEAD", "PATCH"):
@@ -63,18 +64,18 @@ def http_request_handler(
         return "\n".join(parts)
 
     except httpx.TimeoutException:
-        return f"Error: request timed out after {timeout}s"
+        return _("http_timeout", timeout=timeout)
     except httpx.ConnectError as e:
-        return f"Error: connection failed: {e}"
+        return _("http_connection_error", e=e)
     except httpx.HTTPStatusError as e:
         return f"Error: HTTP {e.response.status_code}: {e}"
     except Exception as e:
-        return f"Error: {e}"
+        return _("http_error", e=e)
 
 
 def file_download_handler(url: str = "", path: str = "", timeout: int = 120) -> str:
     if not url:
-        return "Error: url is required"
+        return _("http_no_url")
 
     timeout = min(max(timeout, 5), 600)
 
@@ -110,14 +111,14 @@ def file_download_handler(url: str = "", path: str = "", timeout: int = 120) -> 
             if downloaded < 1024 * 1024
             else f"{downloaded / 1024 / 1024:.1f} MB"
         )
-        return f"Downloaded {size_str} ({downloaded} bytes) to {dest.resolve()}"
+        return _("http_download_ok", size=size_str, bytes=downloaded, path=str(dest.resolve()))
 
     except httpx.TimeoutException:
-        return f"Error: download timed out after {timeout}s"
+        return _("http_timeout", timeout=timeout)
     except httpx.HTTPStatusError as e:
         return f"Error: HTTP {e.response.status_code} — {e}"
     except Exception as e:
-        return f"Error: {e}"
+        return _("http_error", e=e)
 
 
 class _TextExtractor(HTMLParser):
@@ -214,7 +215,7 @@ def web_scrape_handler(
             if text:
                 parts.append(f"\nReadable text:\n{text}")
             else:
-                parts.append("\n(no readable text extracted)")
+                parts.append(_("http_scrape_no_text"))
 
         if extract in ("links", "all"):
             linker = _LinkExtractor()
@@ -230,8 +231,8 @@ def web_scrape_handler(
         return "\n".join(parts)
 
     except httpx.TimeoutException:
-        return f"Error: request timed out after {timeout}s"
+        return _("http_timeout", timeout=timeout)
     except httpx.ConnectError as e:
-        return f"Error: connection failed: {e}"
+        return _("http_connection_error", e=e)
     except Exception as e:
-        return f"Error: {e}"
+        return _("http_error", e=e)

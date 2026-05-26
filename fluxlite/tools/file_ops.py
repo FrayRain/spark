@@ -1,6 +1,7 @@
 import os
 from pathlib import Path
 
+from ..i18n import _
 from .sandbox import resolve_path as _sandbox_resolve
 WINDOWS_BLOCKED = [
     Path("C:\\Windows"),
@@ -25,14 +26,14 @@ def _is_safe(path: Path) -> tuple[bool, str]:
         for blocked in WINDOWS_BLOCKED:
             try:
                 resolved.relative_to(blocked)
-                return False, f"Access denied: {blocked} is a system directory"
+                return False, _("file_access_denied", path=blocked)
             except ValueError:
                 continue
     else:
         for blocked in UNIX_BLOCKED:
             try:
                 resolved.relative_to(blocked)
-                return False, f"Access denied: {blocked} is a system directory"
+                return False, _("file_access_denied", path=blocked)
             except ValueError:
                 continue
     return True, ""
@@ -51,8 +52,8 @@ def write(path: str, content: str) -> str:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
     except OSError as e:
-        return f"[file] Write failed: {e}"
-    return f"[file] Written {len(content)} chars to {p}"
+        return _("file_write_failed", e=e)
+    return _("file_write_ok", len=len(content), path=p)
 
 
 def read(path: str) -> str:
@@ -62,32 +63,32 @@ def read(path: str) -> str:
         if p.exists():
             return p.read_text(encoding="utf-8")
     except (OSError, PermissionError) as e:
-        return f"[file] Read failed: {e}"
+        return _("file_read_failed", e=e)
     p, _ = _safe_path(path)
     try:
         if not p.exists():
-            return f"[file] File not found: {p}"
+            return _("file_not_found", path=p)
         return p.read_text(encoding="utf-8")
     except (OSError, PermissionError) as e:
-        return f"[file] Read failed: {e}"
+        return _("file_read_failed", e=e)
 
 
 def edit(path: str, old_string: str, new_string: str) -> str:
     p, _ = _safe_path(_sandbox_resolve(path))
     if not p.exists():
-        return f"[file] File not found: {p}"
+        return _("file_not_found", path=p)
     try:
         content = p.read_text(encoding="utf-8")
     except (OSError, PermissionError) as e:
-        return f"[file] Read failed: {e}"
+        return _("file_read_failed", e=e)
     if old_string not in content:
-        return f"[file] old_string not found in {p}"
+        return _("file_edit_not_found", path=p)
     new_content = content.replace(old_string, new_string, 1)
     try:
         p.write_text(new_content, encoding="utf-8")
     except (OSError, PermissionError) as e:
         return f"[file] Write failed: {e}"
-    return f"[file] Replaced 1 occurrence in {p}"
+    return _("file_edit_ok", path=p)
 
 
 def append(path: str, content: str) -> str:
@@ -97,19 +98,19 @@ def append(path: str, content: str) -> str:
         with open(p, "a", encoding="utf-8") as f:
             f.write(content)
     except OSError as e:
-        return f"[file] Append failed: {e}"
-    return f"[file] Appended {len(content)} chars to {p}"
+        return _("file_append_failed", e=e)
+    return _("file_append_ok", len=len(content), path=p)
 
 
 def delete(path: str) -> str:
     p, _ = _safe_path(_sandbox_resolve(path))
     if not p.exists():
-        return f"[file] File not found: {p}"
+        return _("file_not_found", path=p)
     try:
         p.unlink()
     except OSError as e:
-        return f"[file] Delete failed: {e}"
-    return f"[file] Deleted {p}"
+        return _("file_delete_failed", e=e)
+    return _("file_delete_ok", path=p)
 
 
 def list_dir(path: str = ".", pattern: str = "") -> str:

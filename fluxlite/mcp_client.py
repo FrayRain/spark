@@ -8,6 +8,8 @@ import subprocess
 import sys
 from pathlib import Path
 
+from . import __version__
+
 MCP_CONFIG = Path.home() / ".fluxlite" / "mcp.json"
 
 _servers: dict[str, dict] = {}
@@ -89,7 +91,7 @@ def start_server(name: str, cmd: str, args: list[str], env: dict | None = None) 
         "params": {
             "protocolVersion": "2024-11-05",
             "capabilities": {},
-            "clientInfo": {"name": "fluxlite", "version": "0.5.7"},
+            "clientInfo": {"name": "fluxlite", "version": __version__},
         },
     }
     resp = _send(proc, init_req)

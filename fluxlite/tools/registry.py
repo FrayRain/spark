@@ -1,5 +1,6 @@
 import json
 import time
+import copy
 from dataclasses import dataclass
 
 from ..i18n import _
@@ -17,10 +18,112 @@ from . import terminal
 from . import planner
 from . import network
 from . import browser
+from . import batch_edit as batch_edit_mod
+from . import search_replace as search_replace_mod
+from . import refactor as refactor_mod
 from .. import plugin_manager
 from ..mcp_client import call_tool, get_server_names, get_tool_list, start_server
 from ..memory import load_memories, save_memories, add_memory
 from ..profile import load_profile, save_profile, add_rule as _add_rule
+from ..knowledge import KnowledgeBase
+
+# Global knowledge base instance, set from app.py at startup
+_kb_instance: KnowledgeBase | None = None
+
+# Auto-test globals
+_AUTO_TEST_COOLDOWN = 10  # seconds between auto-test runs
+_last_test_time: float = 0
+
+_WRITE_TOOLS = {
+    "file_write", "file_edit", "file_append", "file_delete",
+    "batch_edit", "search_replace", "refactor_rename",
+}
+
+
+def _detect_test_command() -> str | None:
+    from pathlib import Path
+    cwd = Path.cwd()
+    if (cwd / "pyproject.toml").exists() or (cwd / "setup.py").exists() or (cwd / "setup.cfg").exists() or (cwd / "pytest.ini").exists():
+        return "python -m pytest -x --tb=short -q"
+    if (cwd / "Cargo.toml").exists():
+        return "cargo test"
+    if (cwd / "go.mod").exists():
+        return "go test ./..."
+    if (cwd / "package.json").exists():
+        return "npm test 2>&1 || true"
+    return None
+
+
+def _run_auto_tests() -> str:
+    global _last_test_time
+    now = time.time()
+    if now - _last_test_time < _AUTO_TEST_COOLDOWN:
+        return ""
+    _last_test_time = now
+    cmd = _detect_test_command()
+    if not cmd:
+        return ""
+    result = test_runner.run_tests(cmd)
+    return _("auto_test_prefix", result=result)
+
+
+def set_knowledge_base(kb: KnowledgeBase):
+    global _kb_instance
+    _kb_instance = kb
+
+
+def _knowledge_query_handler(query: str, top_k: int = 5) -> str:
+    if not _kb_instance:
+        return _("know_not_init")
+    if not _kb_instance.is_built():
+        try:
+            msg = _kb_instance.build(force=False)
+        except Exception as e:
+            return _("know_build_failed", e=e)
+    results = _kb_instance.search(query, top_k=top_k)
+    if not results:
+        return _("know_no_matches")
+    lines = [_("know_results_header", n=len(results), query=query)]
+    for i, r in enumerate(results, 1):
+        loc = f"{r['file']}:{r['start']}-{r['end']}"
+        heading = f"  [{r['heading']}] " if r.get("heading") else "  "
+        snippet = r["content"][:300].replace("\n", "  ")
+        lines.append(f"  {i}. {loc}  (score: {r['score']})")
+        lines.append(f"{heading}{snippet}")
+        if len(r["content"]) > 300:
+            lines.append("     ...")
+    return "\n".join(lines)
+
+
+def _sandbox_handler(action: str) -> str:
+    from .sandbox import _SandboxState
+
+    if action == "on":
+        path = _SandboxState.enable()
+        return f"{_('sandbox_enabled')} (temp: {path})"
+    elif action == "off":
+        _SandboxState.disable()
+        return _("sandbox_disabled")
+    elif action == "review":
+        diff = _SandboxState.review()
+        return diff if diff else _("sandbox_no_changes")
+    elif action == "apply":
+        return f"[sandbox] {_SandboxState.apply()}"
+    elif action == "discard":
+        return f"[sandbox] {_SandboxState.discard()}"
+    elif action == "status":
+        return f"[sandbox] {_SandboxState.status()}"
+    return _("sandbox_unknown_action", action=action)
+
+
+def _knowledge_build_handler(force: bool = False) -> str:
+    global _kb_instance
+    if not _kb_instance:
+        return _("know_not_init")
+    try:
+        return _kb_instance.build(force=force)
+    except Exception as e:
+        return _("know_build_failed", e=e)
 
 
 @dataclass
@@ -37,7 +140,7 @@ def _make_params(**params) -> dict:
 
 def _memory_write_handler(content: str) -> str:
     add_memory(content)
-    return f"Memory recorded: {content[:100]}"
+    return _("memory_recorded", content=content[:100])
 
 
 def _memory_read_handler() -> str:
@@ -45,7 +148,7 @@ def _memory_read_handler() -> str:
     if not entries:
         return "No memories recorded."
     result = "\n".join(f"- {e['content']}" for e in entries[-20:])
-    return f"Recent memories:\n{result}"
+    return _("memory_recent", result=result)
 
 
 def _rule_add_handler(content: str) -> str:
@@ -180,6 +283,7 @@ TOOLS = [
             code={"type": "string", "desc": "\u8981\u6267\u884c\u7684\u4ee3\u7801\u6216\u547d\u4ee4"},
             workdir={"type": "string", "desc": "\u5de5\u4f5c\u76ee\u5f55\uff08\u53ef\u9009\uff0c\u9ed8\u8ba4\u5f53\u524d\u76ee\u5f55\uff09", "optional": True},
             timeout={"type": "number", "desc": "\u8d85\u65f6\u79d2\u6570\uff08\u53ef\u9009\uff0c\u9ed8\u8ba4 30s\uff09", "optional": True},
+            lint_fix={"type": "boolean", "desc": "\u81ea\u52a8\u4fee\u590d Python \u4ee3\u7801\u7684 lint \u9519\u8bef\uff08\u53ef\u9009\uff09", "optional": True},
         ),
         handler=code_exec.execute,
     ),
@@ -424,6 +528,63 @@ TOOLS = [
         ),
         handler=browser.browser_handler,
     ),
+    ToolDef(
+        name="batch_edit",
+        description="Apply multiple file edits atomically — all succeed or all roll back. Edits is a JSON array of {path, old_string, new_string} or {path, content} for new files",
+        parameters=_make_params(
+            edits={"type": "string", "desc": "JSON array: [{path, old_string, new_string}, {path, content}]"},
+        ),
+        handler=batch_edit_mod.batch_edit_handler,
+    ),
+    ToolDef(
+        name="search_replace",
+        description="Search and replace a pattern across multiple files. Supports dry-run to preview changes first. Uses simple string matching (not regex)",
+        parameters=_make_params(
+            pattern={"type": "string", "desc": "Text to search for"},
+            replacement={"type": "string", "desc": "Replacement text"},
+            glob={"type": "string", "desc": "File glob pattern (default **/*)", "optional": True},
+            path={"type": "string", "desc": "Root directory (default current)", "optional": True},
+            dry_run={"type": "boolean", "desc": "Preview only, no changes (default false)", "optional": True},
+        ),
+        handler=search_replace_mod.search_replace_handler,
+    ),
+    ToolDef(
+        name="refactor_rename",
+        description="Rename a symbol (function, class, variable) across files with word-boundary matching. Python files use tokenize to skip strings/comments. Supports dry-run",
+        parameters=_make_params(
+            old_name={"type": "string", "desc": "Current symbol name to rename"},
+            new_name={"type": "string", "desc": "New symbol name"},
+            path={"type": "string", "desc": "Root directory (default current)", "optional": True},
+            glob={"type": "string", "desc": "File glob pattern (default **/*.py)", "optional": True},
+            dry_run={"type": "boolean", "desc": "Preview only, no changes (default false)", "optional": True},
+        ),
+        handler=refactor_mod.refactor_rename_handler,
+    ),
+    ToolDef(
+        name="sandbox",
+        description="Manage the sandbox: isolate file operations in a temp directory. Actions: on (enable), off (disable), review (diff), apply (sync to project), discard (clear), status",
+        parameters=_make_params(
+            action={"type": "string", "desc": "on / off / review / apply / discard / status"},
+        ),
+        handler=_sandbox_handler,
+    ),
+    ToolDef(
+        name="knowledge_build",
+        description="Build or rebuild the project knowledge index for semantic code search. Use when the project structure has changed significantly",
+        parameters=_make_params(
+            force={"type": "boolean", "desc": "Force full rebuild (default false)", "optional": True},
+        ),
+        handler=_knowledge_build_handler,
+    ),
+    ToolDef(
+        name="knowledge_query",
+        description="Search the project knowledge base for semantically relevant code/documentation chunks. Use this when you need to find code by its functionality rather than by filename",
+        parameters=_make_params(
+            query={"type": "string", "desc": "Search query describing what you're looking for"},
+            top_k={"type": "number", "desc": "Number of results (default 5)", "optional": True},
+        ),
+        handler=_knowledge_query_handler,
+    ),
 ]
 
 TOOL_NAME_MAP = {t.name: t for t in TOOLS}
@@ -442,6 +603,21 @@ def get_tool_schemas() -> list[dict]:
     return builtin
 
 
+def _is_transient_error(result: str) -> bool:
+    """Check if an error looks transient (network, timeout, rate-limit)."""
+    lowered = result.lower()
+    transient_keywords = [
+        "timed out", "timeout", "connection refused", "connection reset",
+        "connection error", "network is unreachable", "name or service not known",
+        "temporary failure", "rate limit", "too many requests", "429",
+        "503", "502", "504", "service unavailable", "bad gateway",
+        "econnrefused", "econnreset", "eagain", "eintr",
+        "server error", "internal server error", "remote end closed",
+        "broken pipe", "connection aborted",
+    ]
+    return any(kw in lowered for kw in transient_keywords)
+
+
 def execute_tool(name: str, args: dict) -> str:
     tool = TOOL_NAME_MAP.get(name)
     if not tool:
@@ -450,22 +626,63 @@ def execute_tool(name: str, args: dict) -> str:
                 tool = pt
                 break
     if not tool:
-        return f"{ICON_ERROR} Unknown tool: {name}"
+        return _("tool_unknown", icon=ICON_ERROR, name=name)
 
     hook_pre = hooks.run_pre(name, args)
 
-    try:
-        result = tool.handler(**args)
-    except PermissionError as e:
-        result = f"{ICON_ERROR} {e}"
-    except Exception as e:
-        result = f"{ICON_ERROR} {name} execution error: {e}"
+    max_attempts = 3
+    last_error = ""
+    tool_args = copy.deepcopy(args)
+    retries_done = 0
 
-    hook_post = hooks.run_post(name, args, result)
+    for attempt in range(max_attempts):
+        try:
+            result = tool.handler(**tool_args)
+        except PermissionError as e:
+            result = _("tool_perm_error", icon=ICON_ERROR, e=e)
+        except Exception as e:
+            result = _("tool_exec_error", icon=ICON_ERROR, name=name, e=e)
 
+        is_error = result.startswith("[error]") or result.startswith(ICON_ERROR)
+
+        if not is_error:
+            retries_msg = ""
+            if retries_done:
+                retries_msg = _("tool_retry_recovered", n=retries_done)
+            hook_post = hooks.run_post(name, args, result)
+            if retries_msg:
+                result += retries_msg
+            if hook_pre:
+                result = f"[Hooks]\n{hook_pre}\n\n{result}"
+            if hook_post:
+                result = f"{result}\n\n[Hooks]\n{hook_post}"
+            if name in _WRITE_TOOLS:
+                auto_test = _run_auto_tests()
+                if auto_test:
+                    result += auto_test
+            return result
+
+        # Try retry for transient errors
+        if attempt < max_attempts - 1 and _is_transient_error(result):
+            last_error = result
+            retries_done += 1
+            delay = 2 ** attempt  # 1s, 2s
+            if "timeout" in tool_args and isinstance(tool_args["timeout"], (int, float)):
+                tool_args["timeout"] = int(tool_args["timeout"] * 2)
+            time.sleep(delay)
+            continue
+
+        # Non-retryable or last attempt
+        last_error = result
+        break
+
+    hook_post = hooks.run_post(name, args, last_error)
+
+    result = last_error
+    if retries_done:
+        result += _("tool_retry_giving_up", n=retries_done)
     if hook_pre:
         result = f"[Hooks]\n{hook_pre}\n\n{result}"
     if hook_post:
         result = f"{result}\n\n[Hooks]\n{hook_post}"
-
     return result

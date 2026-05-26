@@ -25,7 +25,7 @@ def search(query: str, max_results: int = 5) -> str:
 
     lines = [f"[search] Results for: {query}", ""]
     for i, r in enumerate(result["results"], 1):
-        title = r.get("title", "No title")
+        title = r.get("title", _("search_no_title"))
         url = r.get("url", "")
         content = r.get("content", "")
         lines.append(f"  {i}. {title}")

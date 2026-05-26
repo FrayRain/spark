@@ -7,6 +7,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from ..i18n import _
 
 HOOKS_DIR = Path.home() / ".fluxlite" / "hooks"
 DEFAULT_TIMEOUT = 10
@@ -65,7 +66,7 @@ def _run_script(script: Path, env: dict, timeout: int = DEFAULT_TIMEOUT) -> str:
             parts.append(f"(exit {r.returncode})")
         return "\n".join(parts) if parts else ""
     except subprocess.TimeoutExpired:
-        return f"[hook] {script.name} timed out after {timeout}s"
+        return _("hook_timed_out", name=script.name, timeout=timeout)
     except Exception as e:
         return f"[hook] {script.name} error: {e}"
 
@@ -98,7 +99,7 @@ def run_post(tool_name: str, args: dict, result: str) -> str:
 
 def list_hooks() -> str:
     if not HOOKS_DIR.is_dir():
-        return "No hooks directory (~/.fluxlite/hooks/)"
+        return _("hook_no_dir")
     lines = []
     for subdir in sorted(HOOKS_DIR.iterdir()):
         if subdir.is_dir():
@@ -108,7 +109,7 @@ def list_hooks() -> str:
                 for s in scripts:
                     lines.append(f"    - {s}")
     if not lines:
-        return "No hook scripts found in ~/.fluxlite/hooks/"
+        return _("hook_no_scripts")
     return "\n".join(lines)
 
 
@@ -142,7 +143,7 @@ def run_single(hook_name: str, args: str = "{}") -> str:
                 env = _build_env(hook_name, parsed_args)
                 return _run_script(script, env)
 
-    return f"Hook '{hook_name}' not found"
+    return _("hook_not_found", name=hook_name)
 
 
 def hook_run_handler(hook_name: str, args: str = "{}") -> str:

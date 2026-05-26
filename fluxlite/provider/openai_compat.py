@@ -88,7 +88,7 @@ class OpenAIProvider(BaseProvider):
 
         return Message(role="assistant", content=msg.content or "")
 
-    def chat_stream(self, messages: list[dict], tools: Optional[list[dict]] = None):
+    def chat_stream(self, messages: list[dict], tools: Optional[list[dict]] = None, reasoning_effort: str = ""):
         api_tools = self._build_tools(tools)
         # Serialize manually to preserve reasoning_content in assistant messages
         raw_messages = []
@@ -99,17 +99,89 @@ class OpenAIProvider(BaseProvider):
             "messages": raw_messages,
             "stream": True,
         }
+        if reasoning_effort:
+            body["reasoning_effort"] = reasoning_effort
         if api_tools:
             body["tools"] = api_tools
 
         try:
             raw_body = json.dumps(body, ensure_ascii=False)
-            stream_resp = self._httpx.post(
+            with self._httpx.stream(
+                "POST",
                 "/chat/completions",
                 content=raw_body,
                 headers={"Content-Type": "application/json"},
-            )
-            stream_resp.raise_for_status()
+            ) as stream_resp:
+                stream_resp.raise_for_status()
+
+                collected_content = []
+                collected_reasoning = []
+                tool_calls_buffer = {}
+
+                for line in stream_resp.iter_lines():
+                    if not line or line.startswith(":"):
+                        continue
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str.strip() == "[DONE]":
+                            break
+                        try:
+                            chunk_data = json.loads(data_str)
+                        except json.JSONDecodeError:
+                            continue
+                        choices = chunk_data.get("choices", [])
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta", {})
+                        if not delta:
+                            continue
+
+                        reasoning = delta.get("reasoning_content")
+                        if reasoning:
+                            collected_reasoning.append(reasoning)
+                            yield Message(role="assistant", reasoning_content=reasoning)
+
+                        content = delta.get("content")
+                        if content:
+                            collected_content.append(content)
+                            yield Message(role="assistant", content=content)
+
+                        usage_data = chunk_data.get("usage")
+                        if usage_data:
+                            yield Message(role="assistant", usage=usage_data)
+
+                        tool_calls_data = delta.get("tool_calls")
+                        if tool_calls_data:
+                            for tc in tool_calls_data:
+                                idx = tc.get("index", 0)
+                                if idx not in tool_calls_buffer:
+                                    tool_calls_buffer[idx] = {"id": "", "name": "", "args": ""}
+                                tc_id = tc.get("id")
+                                if tc_id:
+                                    tool_calls_buffer[idx]["id"] = tc_id
+                                func = tc.get("function", {})
+                                fname = func.get("name")
+                                if fname:
+                                    tool_calls_buffer[idx]["name"] += fname
+                                fargs = func.get("arguments")
+                                if fargs:
+                                    tool_calls_buffer[idx]["args"] += fargs
+
+                if tool_calls_buffer:
+                    tool_calls = [
+                        ToolCall(
+                            id=v["id"],
+                            name=v["name"],
+                            arguments=json.loads(v["args"]) if v["args"] else {},
+                        )
+                        for v in tool_calls_buffer.values()
+                    ]
+                    yield Message(
+                        role="assistant",
+                        content="".join(collected_content),
+                        tool_calls=tool_calls,
+                    )
+
         except httpx.HTTPStatusError as e:
             detail = e.response.text if hasattr(e, 'response') else str(e)
             if "tool" in detail.lower() or "function" in detail.lower():
@@ -120,74 +192,6 @@ class OpenAIProvider(BaseProvider):
         except Exception as e:
             yield Message(role="assistant", content=f"{_('error')}: {e}")
             return
-
-        collected_content = []
-        collected_reasoning = []
-        tool_calls_buffer = {}
-
-        for line in stream_resp.iter_lines():
-            if not line or line.startswith(":"):
-                continue
-            if line.startswith("data: "):
-                data_str = line[6:]
-                if data_str.strip() == "[DONE]":
-                    break
-                try:
-                    chunk_data = json.loads(data_str)
-                except json.JSONDecodeError:
-                    continue
-                choices = chunk_data.get("choices", [])
-                if not choices:
-                    continue
-                delta = choices[0].get("delta", {})
-                if not delta:
-                    continue
-
-                reasoning = delta.get("reasoning_content")
-                if reasoning:
-                    collected_reasoning.append(reasoning)
-                    yield Message(role="assistant", reasoning_content=reasoning)
-
-                content = delta.get("content")
-                if content:
-                    collected_content.append(content)
-                    yield Message(role="assistant", content=content)
-
-                usage_data = chunk_data.get("usage")
-                if usage_data:
-                    yield Message(role="assistant", usage=usage_data)
-
-                tool_calls_data = delta.get("tool_calls")
-                if tool_calls_data:
-                    for tc in tool_calls_data:
-                        idx = tc.get("index", 0)
-                        if idx not in tool_calls_buffer:
-                            tool_calls_buffer[idx] = {"id": "", "name": "", "args": ""}
-                        tc_id = tc.get("id")
-                        if tc_id:
-                            tool_calls_buffer[idx]["id"] = tc_id
-                        func = tc.get("function", {})
-                        fname = func.get("name")
-                        if fname:
-                            tool_calls_buffer[idx]["name"] += fname
-                        fargs = func.get("arguments")
-                        if fargs:
-                            tool_calls_buffer[idx]["args"] += fargs
-
-        if tool_calls_buffer:
-            tool_calls = [
-                ToolCall(
-                    id=v["id"],
-                    name=v["name"],
-                    arguments=json.loads(v["args"]) if v["args"] else {},
-                )
-                for v in tool_calls_buffer.values()
-            ]
-            yield Message(
-                role="assistant",
-                content="".join(collected_content),
-                tool_calls=tool_calls,
-            )
 
     def _prompt_injection_chat(self, messages: list[dict], tools: Optional[list[dict]] = None) -> Message:
         system_prompt = self._build_injection_prompt(tools)

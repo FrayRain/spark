@@ -14,6 +14,7 @@ import queue
 import threading
 import subprocess
 from pathlib import Path
+from ..i18n import _
 
 
 _sessions: dict[str, "_TerminalSession"] = {}
@@ -74,7 +75,7 @@ class _TerminalSession:
     def run(self, command: str, timeout: int = 60) -> str:
         if not self._alive or self.process.poll() is not None:
             self._alive = False
-            return "[session terminated]"
+            return _("terminal_session_terminated")
 
         self._drain()
 
@@ -87,20 +88,20 @@ class _TerminalSession:
                 self.process.stdin.flush()
             except (BrokenPipeError, OSError) as e:
                 self._alive = False
-                return f"[write error: {e}]"
+                return _("terminal_write_error", e=e)
 
             output = []
             deadline = time.monotonic() + timeout
             while True:
                 remaining = deadline - time.monotonic()
                 if remaining <= 0:
-                    output.append("[Timeout]")
+                    output.append(_("terminal_timeout"))
                     break
 
                 try:
                     line = self._line_queue.get(timeout=remaining)
                 except queue.Empty:
-                    output.append("[Timeout]")
+                    output.append(_("terminal_timeout"))
                     break
 
                 if line is None:

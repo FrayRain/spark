@@ -1,6 +1,7 @@
 """Git operation tools for AI use."""
 import subprocess
 from pathlib import Path
+from ..i18n import _
 
 _TIMEOUT = 15
 
@@ -14,7 +15,7 @@ def _run_git(*args: str) -> tuple[str, str, int]:
         )
         return result.stdout, result.stderr, result.returncode
     except FileNotFoundError:
-        return "", "git not found", -1
+        return "", _("git_not_found"), -1
     except subprocess.TimeoutExpired:
         return "", "timed out", -1
 
@@ -38,7 +39,7 @@ def diff_handler(path: str = "", staged: bool = False) -> str:
     if rc != 0:
         return f"[error] {stderr.strip()}"
     if not stdout.strip():
-        return "No changes."
+        return _("git_no_changes")
     if len(stdout) > 3000:
         stdout = stdout[:3000] + "\n... (truncated at 3000 chars)"
     return stdout
@@ -48,7 +49,7 @@ def log_handler(count: int = 10) -> str:
     stdout, stderr, rc = _run_git("log", f"-{count}", "--oneline", "--decorate")
     if rc != 0:
         return f"[error] {stderr.strip()}"
-    return stdout.strip() or "No commits."
+    return stdout.strip() or _("git_no_commits")
 
 
 def add_handler(path: str = ".") -> str:

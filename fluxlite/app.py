@@ -4,8 +4,6 @@ import sys
 import json
 import time
 import subprocess
-import threading
-import itertools
 from datetime import datetime
 from pathlib import Path
 
@@ -29,42 +27,6 @@ _SESSION_PATH = None
 _SESSION_MAX_FILES = 50
 _LAST_SAVE = 0.0
 _SAVE_DEBOUNCE = 2.0
-
-
-class _Spinner:
-    def __init__(self):
-        self._running = False
-        self._thread = None
-
-    def start(self, message):
-        self._running = True
-        self._message = message
-        self._thread = threading.Thread(target=self._spin, daemon=True)
-        self._thread.start()
-
-    def _spin(self):
-        for c in itertools.cycle('|/-\\'):
-            if not self._running:
-                break
-            try:
-                term_w = shutil.get_terminal_size().columns
-            except Exception:
-                term_w = 80
-            text = f'  {c} {self._message} '
-            text = text.ljust(min(term_w - 1, 120))
-            sys.stdout.write(f'\r{text}')
-            sys.stdout.flush()
-            time.sleep(0.1)
-
-    def stop(self):
-        if not self._running:
-            return
-        self._running = False
-        if self._thread and self._thread.is_alive():
-            self._thread.join(1.0)
-        self._thread = None
-        sys.stdout.write('\r\033[2K\r')
-        sys.stdout.flush()
 
 
 def _now():
@@ -239,7 +201,9 @@ MCP (外部服务集成):
 - 对于复杂任务，先规划步骤再执行
 - 每次修改文件后确认语法正确
 - 回复简洁直接
-- 用中文回答{identity_block}{rules_block}"""
+- 用中文回答
+- 对于不确定的概念或事物禁止臆想，如果用户了解可以询问用户，或者使用工具搜索相关资料{identity_block}{rules_block}"""
+
     return f"""You are {agent_name}, a lightweight AI agent running in the terminal.
 Available tools:
 
@@ -268,7 +232,8 @@ Rules:
 - For complex tasks, plan steps first before executing
 - Verify syntax after modifying files
 - Keep responses concise
-- Answer in English{identity_block}{rules_block}"""
+- Answer in English
+- Do not speculate about uncertain concepts or matters; if the user is aware, you may ask the user, or use tools to search for related information.{identity_block}{rules_block}"""
 
 
 from .context import (
@@ -366,6 +331,25 @@ def _auto_fix_file(path: str, error_msg: str, provider) -> str | None:
         return None
 
 
+def _auto_debug_analysis(code: str, error: str, provider, lang: str = "zh") -> str | None:
+    """Analyze a code execution error using the LLM and return analysis."""
+    try:
+        prompt = (
+            f"The following code execution failed:\n\n"
+            f"```python\n{code}\n```\n\n"
+            f"Error output:\n```\n{error[:1500]}\n```\n\n"
+            "Analyze the root cause and suggest a specific fix. "
+            "Return only the analysis, keep it under 100 words."
+        )
+        result = provider.chat(messages=[{"role": "user", "content": prompt}], tools=[])
+        analysis = (result.content or "").strip()
+        if analysis:
+            return _("auto_debug_analysis", analysis=analysis[:500])
+        return _("auto_debug_failed")
+    except Exception:
+        return None
+
+
 def _auto_compress(messages: list, max_tok: int):
     total = _cumulative_tokens["input"] + _cumulative_tokens["output"]
     if total < max_tok * 0.88:
@@ -433,52 +417,105 @@ def _stream_response(provider, messages, tool_schemas, agent_name, max_retries=3
     usage = None
     received = False
     reasoning_header_shown = False
+    content_streamed = False
 
-    spinner = _Spinner()
-    spinner.start(_("responding"))
+    sys.stderr.write(f"  {_('responding')}...\n")
+    sys.stderr.flush()
 
     for attempt in range(max_retries):
+        content_streamed = False
         try:
-            for chunk in provider.chat_stream(messages, tool_schemas):
-                if not received:
-                    received = True
-                    spinner.stop()
+            for chunk in provider.chat_stream(messages, tool_schemas, reasoning_effort=CommandState.reasoning_effort):
                 if chunk.usage:
                     usage = chunk.usage
+                    if not received:
+                        received = True
                 elif chunk.tool_calls:
                     tool_calls = chunk.tool_calls
+                    if not received:
+                        received = True
                 elif chunk.reasoning_content:
                     reasoning += chunk.reasoning_content
-                    if CommandState.thinking_mode != "off" and not reasoning_header_shown:
-                        console.print(f"\n  [{DIM}]\u2501\u2501 {_('thinking')} \u2501\u2501[/]")
-                        reasoning_header_shown = True
+                    if not received:
+                        received = True
+                    if CommandState.thinking_mode != "off":
+                        if not reasoning_header_shown:
+                            reasoning_header_shown = True
+                            sys.stdout.write(f"\n  {_('thinking')} \n")
+                            sys.stdout.flush()
+                        if CommandState.thinking_mode == "visible":
+                            sys.stdout.write(f"\033[90m{chunk.reasoning_content}\033[0m")
+                            sys.stdout.flush()
                 elif chunk.content:
+                    if not received:
+                        received = True
                     content += chunk.content
+                    content_streamed = True
 
             return dict(content=content, reasoning=reasoning, tool_calls=tool_calls,
                         usage=usage, received=received, truncated=False)
         except KeyboardInterrupt:
-            if not received:
-                spinner.stop()
-            console.print(f"\n  [{ORANGE}]! {_('truncated')}[/]")
-            return dict(content=content, reasoning=reasoning, tool_calls=tool_calls,
-                        usage=usage, received=received, truncated=True)
+            _choices = [
+                ("edit", _("interrupt_edit")),
+                ("continue", _("interrupt_restart")),
+                ("accept", _("interrupt_accept")),
+                ("rewind", _("interrupt_rewind")),
+            ]
+            _act = radio_select(_("interrupt_title"), _choices)
+
+            if _act == "edit":
+                if content:
+                    console.print(f"\n  [{DIM}]{_('interrupt_partial')}[/]")
+                    console.print(Markdown(content[:500], code_theme="monokai"))
+                    if len(content) > 500:
+                        console.print(f"  [{DIM}]{_('interrupt_more_chars', n=len(content)-500)}[/]")
+                console.print(f"  [{CYAN}]{_('interrupt_guidance')}[/]")
+                feedback = read_input()
+                if feedback.strip():
+                    messages.append({"role": "assistant", "content": content + "\n\n" + _("interrupt_annotation")})
+                    messages.append({"role": "user", "content": feedback.strip()})
+                return dict(content=content, reasoning=reasoning, tool_calls=tool_calls,
+                            usage=usage, received=received, truncated=False, edit_continue=True)
+
+            if _act == "continue":
+                if attempt < max_retries - 1:
+                    sys.stderr.write(f"  {_('responding')}...\n")
+                    sys.stderr.flush()
+                    received = False
+                    content = ""
+                    reasoning = ""
+                    tool_calls = []
+                    usage = None
+                    continue
+                console.print(f"\n  [{ORANGE}]{_('interrupt_no_retries')}[/]")
+                return dict(content=content, reasoning=reasoning, tool_calls=tool_calls,
+                            usage=usage, received=received, truncated=True)
+
+            if _act == "accept":
+                console.print(f"\n  [{ORANGE}]{_('interrupt_accepted')}[/]")
+                return dict(content=content, reasoning=reasoning, tool_calls=tool_calls,
+                            usage=usage, received=received, truncated=True)
+
+            console.print(f"\n  [{ORANGE}]{_('interrupt_rewinding')}[/]")
+            return dict(content="", reasoning="", tool_calls=[], usage=None,
+                        received=False, truncated=False, rewind=True)
+
         except Exception as e:
             if attempt < max_retries - 1:
-                if not received:
-                    spinner.stop()
-                console.print(f"\n  [{ORANGE}]! {e}")
-                console.print(f"  [{ORANGE}]! Retry {attempt + 2}/{max_retries}...[/]")
-                spinner.start(_("responding"))
+                console.print(f"\n  [{ORANGE}]{_('retry_error', e=e)}")
+                if "tool" in str(e).lower() and "preceding" in str(e).lower():
+                    _cleanup_orphaned_tool_messages(messages)
+                    console.print(f"  [{ORANGE}]{_('retry_cleanup')}[/]")
+                else:
+                    console.print(f"  [{ORANGE}]{_('retry_attempt', n=attempt+2, max=max_retries)}[/]")
+                sys.stderr.write(f"  {_('responding')}...\n")
+                sys.stderr.flush()
                 received = False
                 time.sleep(1)
                 continue
-            if not received:
-                spinner.stop()
-            console.print(f"\n  [{RED}]x {e}[/]")
+            console.print(f"\n  [{RED}]{_('retry_final_error', e=e)}[/]")
             return dict(content=content, reasoning=reasoning, tool_calls=tool_calls,
                         usage=usage, received=received, truncated=False)
-    spinner.stop()
     return dict(content="", reasoning="", tool_calls=[], usage=None,
                 received=False, truncated=False)
 
@@ -495,6 +532,11 @@ def run_app(
     auto_mode: bool = False,
 ):
     set_lang(lang)
+
+    if hasattr(sys.stdout, 'reconfigure'):
+        sys.stdout.reconfigure(line_buffering=True)
+
+    CommandState.load_from_settings()
 
     profile = load_profile()
     agent_name, user_name = _setup_identity(profile)
@@ -580,7 +622,6 @@ def run_app(
 
                 if content:
                     sys.stdout.write(content)
-                    sys.stdout.write("\n" if not content.endswith("\n") else "")
 
                 if not tool_calls:
                     break
@@ -840,12 +881,12 @@ def run_app(
                         })
                         console.print(f"\n  [{ORANGE}]{tc.name}[/]  [{RED}]cancelled[/]")
                         continue
-                s = _Spinner()
-                s.start(_("processing"))
+                sys.stderr.write(f"  {_('processing')}...\n")
+                sys.stderr.flush()
                 try:
                     result = execute_tool(tc.name, tc.arguments)
                 finally:
-                    s.stop()
+                    pass
 
                 quality_lines = []
 
@@ -873,6 +914,15 @@ def run_app(
                                         result += "\n\n[auto-fix OK]"
                                 else:
                                     quality_lines.append("Auto-fix skipped (LLM error)")
+
+                # Auto-debug: analyze code execution errors
+                if (getattr(CommandState, 'auto_debug', True) and tc.name == "code_executor"
+                        and ("[error]" in result or "Exit code:" in result)):
+                    code = tc.arguments.get("code", "")
+                    if code:
+                        debug_analysis = _auto_debug_analysis(code, result, provider, lang)
+                        if debug_analysis:
+                            result += debug_analysis
 
                 _tool_group.append((tc.name, args_str, result, quality_lines))
                 messages.append({

@@ -88,3 +88,38 @@ def remove_rule(profile: dict, index: int) -> bool:
         save_profile(profile)
         return True
     return False
+
+
+SETTINGS_PATH = Path.home() / ".fluxlite" / "settings.json"
+
+DEFAULT_SETTINGS = {
+    "thinking_mode": "off",
+    "reasoning_effort": "",
+    "auto_debug": True,
+    "show_tool_result": False,
+    "show_token_usage": False,
+    "git_autocommit": False,
+}
+
+
+def load_settings() -> dict:
+    if SETTINGS_PATH.exists():
+        try:
+            data = json.loads(SETTINGS_PATH.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                return {**DEFAULT_SETTINGS, **data}
+        except (json.JSONDecodeError, OSError):
+            pass
+    return dict(DEFAULT_SETTINGS)
+
+
+def save_settings(settings: dict):
+    try:
+        SETTINGS_PATH.parent.mkdir(parents=True, exist_ok=True)
+        to_save = {k: settings.get(k, v) for k, v in DEFAULT_SETTINGS.items()}
+        SETTINGS_PATH.write_text(
+            json.dumps(to_save, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+    except (OSError, PermissionError):
+        pass

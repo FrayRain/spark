@@ -18,9 +18,21 @@ class AnthropicProvider(BaseProvider):
         timeout: int = 60,
         tools_enabled: bool = True,
     ):
-        self.model = model
         self.tools_enabled = tools_enabled
-        self._client = Anthropic(api_key=api_key, base_url=base_url, timeout=timeout)
+        extra_headers = {}
+        if model.endswith("-1m"):
+            extra_headers["anthropic-beta"] = "context-1m-2025-08-07"
+            self.model = model.replace("-1m", "")
+        else:
+            self.model = model
+        client_kwargs = {
+            "api_key": api_key,
+            "base_url": base_url,
+            "timeout": timeout,
+        }
+        if extra_headers:
+            client_kwargs["default_headers"] = extra_headers
+        self._client = Anthropic(**client_kwargs)
 
     def _build_tools(self, tools: Optional[list[dict]] = None) -> Optional[list[dict]]:
         if not self.tools_enabled or not tools:
@@ -114,7 +126,7 @@ class AnthropicProvider(BaseProvider):
             tool_calls=tool_calls if tool_calls else None,
         )
 
-    def chat_stream(self, messages: list[dict], tools: Optional[list[dict]] = None):
+    def chat_stream(self, messages: list[dict], tools: Optional[list[dict]] = None, reasoning_effort: str = ""):
         api_tools = self._build_tools(tools)
         system, msgs = self._convert_messages(messages)
         kwargs = {"model": self.model, "messages": msgs, "max_tokens": 4096, "stream": True}

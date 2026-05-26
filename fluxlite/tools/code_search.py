@@ -2,6 +2,7 @@
 import os
 import re
 from pathlib import Path
+from ..i18n import _
 
 
 def _should_ignore(name: str) -> bool:
@@ -51,10 +52,10 @@ def grep_handler(pattern: str, path: str = ".", file_glob: str = "", max_results
             break
 
     if not matches:
-        return f"No matches for {pattern!r} in {path}"
+        return _("codesrch_no_matches", pattern=pattern)
     result = "\n".join(matches[:max_results])
     if len(matches) > max_results:
-        result += f"\n... ({len(matches) - max_results} more matches)"
+        result += _("codesrch_truncated", n=len(matches) - max_results)
     return result
 
 

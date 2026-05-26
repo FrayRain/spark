@@ -27,5 +27,5 @@ class BaseProvider(ABC):
         ...
 
     @abstractmethod
-    def chat_stream(self, messages: list[dict], tools: Optional[list[dict]] = None):
+    def chat_stream(self, messages: list[dict], tools: Optional[list[dict]] = None, reasoning_effort: str = ""):
         ...
