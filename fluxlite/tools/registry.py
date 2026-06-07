@@ -21,6 +21,7 @@ from . import browser
 from . import batch_edit as batch_edit_mod
 from . import search_replace as search_replace_mod
 from . import refactor as refactor_mod
+from . import system_tools
 from .. import plugin_manager
 from ..mcp_client import call_tool, get_server_names, get_tool_list, start_server
 from ..memory import load_memories, save_memories, add_memory
@@ -100,7 +101,7 @@ def _sandbox_handler(action: str) -> str:
 
     if action == "on":
         path = _SandboxState.enable()
-        return f"{_('sandbox_enabled')} (temp: {path})"
+        return _("sandbox_enabled", path=path)
     elif action == "off":
         _SandboxState.disable()
         return _("sandbox_disabled")
@@ -146,7 +147,7 @@ def _memory_write_handler(content: str) -> str:
 def _memory_read_handler() -> str:
     entries = load_memories()
     if not entries:
-        return "No memories recorded."
+        return _("memory_none")
     result = "\n".join(f"- {e['content']}" for e in entries[-20:])
     return _("memory_recent", result=result)
 
@@ -154,7 +155,7 @@ def _memory_read_handler() -> str:
 def _rule_add_handler(content: str) -> str:
     profile = load_profile()
     _add_rule(profile, content)
-    return f"Rule recorded: {content[:100]}"
+    return f"{_('cmd_rule_recorded')} {content[:100]}"
 
 
 def _rule_remove_handler(index: int) -> str:
@@ -164,8 +165,8 @@ def _rule_remove_handler(index: int) -> str:
     if 0 <= idx < len(rules):
         removed = rules.pop(idx)
         save_profile(profile)
-        return f"Rule removed: {removed[:100]}"
-    return f"Error: no rule at index {index}"
+        return _("rule_removed", content=removed[:100])
+    return _("rule_remove_error", index=index)
 
 
 def _mcp_call_handler(server: str, tool_name: str, arguments: str = "{}") -> str:
@@ -179,17 +180,12 @@ def _mcp_call_handler(server: str, tool_name: str, arguments: str = "{}") -> str
 def _mcp_list_handler() -> str:
     servers = get_server_names()
     if not servers:
-        return (
-            "No MCP servers connected.\n"
-            "Configure in ~/.fluxlite/mcp.json or use /mcp to manage.\n"
-            "Example:\n"
-            '  {"servers": [{"name": "github", "command": "node", "args": ["server.js"]}]}'
-        )
+        return _("mcp_no_servers")
     tools = get_tool_list()
     if not tools:
         servers_str = ", ".join(servers)
-        return f"MCP servers: {servers_str}\n(no tools advertised)"
-    lines = [f"MCP: {len(tools)} tools across {len(servers)} servers"]
+        return _("mcp_no_tools", servers=servers_str)
+    lines = [_("mcp_tools_summary", tools=len(tools), servers=len(servers))]
     for t in tools:
         params = ", ".join(t.get("parameters", {}).get("properties", {}).keys())
         lines.append(f"  [{t['server']}] {t['name']}({params}) — {t.get('description', '')[:60]}")
@@ -217,7 +213,7 @@ def _rule_list_handler() -> str:
     profile = load_profile()
     rules = profile.get("rules", [])
     if not rules:
-        return "No rules."
+        return _("rule_no_rules")
     return "\n".join(f"{i+1}. {r}" for i, r in enumerate(rules))
 
 
@@ -584,6 +580,24 @@ TOOLS = [
             top_k={"type": "number", "desc": "Number of results (default 5)", "optional": True},
         ),
         handler=_knowledge_query_handler,
+    ),
+    ToolDef(
+        name="list_processes",
+        description="list_processes_desc",
+        parameters=_make_params(
+            sort_by={"type": "string", "desc": "Sort by: name (default), pid, memory", "optional": True},
+            name_filter={"type": "string", "desc": "Filter by process name (case-insensitive substring match)", "optional": True},
+        ),
+        handler=system_tools.list_processes,
+    ),
+    ToolDef(
+        name="launch_app",
+        description="launch_app_desc",
+        parameters=_make_params(
+            target={"type": "string", "desc": "Application path, file path, or URL to open"},
+            wait={"type": "boolean", "desc": "Wait for the process to exit (default false)", "optional": True},
+        ),
+        handler=system_tools.launch_app,
     ),
 ]
 

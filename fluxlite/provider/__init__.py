@@ -28,6 +28,8 @@ def create_provider(
 
 def detect_provider_type(base_url: str) -> str:
     url = base_url.lower()
+    if "ollama" in url or "11434" in url:
+        return "ollama"
     if "deepseek" in url:
         return "deepseek"
     if "groq" in url:

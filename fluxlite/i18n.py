@@ -16,7 +16,7 @@ _STRINGS = {
         "processing": "处理中",
         "show_memory": "查看身份信息、记忆与规则",
         "truncated": "回答已被截断",
-        "compact_done": "记忆压缩完成",
+        "compact_done": "记忆压缩完成（{count} 条目已合并）",
         "think_on": "推理模式已启用",
         "think_off": "推理模式已禁用",
         "think_display_on": "推理过程将持续显示",
@@ -71,6 +71,8 @@ _STRINGS = {
         # --- compress ---
         "compress_warning": "上下文 {total}/{max_tok} — 自动裁剪旧工具轮次",
         "compress_critical": "上下文紧张 {total}/{max_tok} — 移除最早的一轮对话",
+        "compress_summarized": "已智能压缩早期对话（{n} 条消息 → 摘要）",
+        "compress_label": "摘要",
 
         # --- confirm tool ---
         "confirm_code_exec": "代码执行 ({lang})",
@@ -118,6 +120,9 @@ _STRINGS = {
         "main_max_turns": "已达到最大轮次",
         "main_git_commit_msg": "fluxlite: AI 自动提交 {date}",
         "main_git_commit_ok": "✓ {short}",
+        "main_git_preview": "将提交以下变更:",
+        "main_git_confirm": "提交这些变更？(Y/n) [Y=提交]",
+        "main_git_aborted": "已取消提交",
 
         # --- tool group display ---
         "toolgroup_quality_issue": "质量门问题",
@@ -192,7 +197,7 @@ _STRINGS = {
 
         # --- sandbox ---
         "sandbox_usage": "用法: /sandbox <on|off|review|apply|discard|status>",
-        "sandbox_enabled": "沙箱: 已启用",
+        "sandbox_enabled": "沙箱: 已启用（临时目录: {path}）",
         "sandbox_disabled": "沙箱: 已禁用",
         "sandbox_no_changes": "无待处理的变更",
         "sandbox_not_active": "沙箱未激活",
@@ -378,13 +383,125 @@ _STRINGS = {
         "tool_retry_giving_up": "\n  [已重试 {n} 次，放弃]",
         "sandbox_unknown_action": "[sandbox] 未知操作: {action}（使用 on/off/review/apply/discard/status）",
         "rule_no_rules": "没有规则。",
+        "rule_removed": "已移除规则: {content}",
+        "rule_remove_error": "错误: 索引 {index} 无对应规则",
+        "memory_none": "无记忆记录",
         "config_updated": "配置已更新: {key} = {value}",
         "know_results_header": "[knowledge] 前 {n} 个结果: {query}",
+        "mcp_no_tools": "MCP 服务器: {servers}\n（无工具声明）",
+        "mcp_tools_summary": "MCP: {servers} 个服务器共 {tools} 个工具",
 
         # --- knowledge.py ---
         "memory_summary_label": "会话总结",
         "memory_summary_prompt_en": "将以下对话总结为 3-5 个要点。捕获：用户偏好、决策、关键事实、项目上下文。\n\n{content}",
         "memory_summary_prompt_zh": "将以下对话总结为 3-5 个要点（中文）。捕获：用户偏好、决策、关键事实、项目上下文。\n\n{content}",
+
+        # --- system_tools.py ---
+        "list_processes_desc": "查看系统正在运行的进程（PID、内存、名称），支持排序和名称过滤",
+        "launch_app_desc": "打开应用程序、文件、目录或 URL（自动识别系统类型调用默认程序）",
+        "sys_launched": "[system] 已启动 {target}（PID {pid}）",
+        "sys_opened": "[system] 已打开 {target}",
+        "sys_not_found": "[system] 未找到: {target}",
+        "sys_launch_error": "[system] 打开失败 {target}: {error}",
+
+        # --- auto mode ---
+        "auto_tool_done": "[tool] {name} 完成",
+        "auto_tool_running": "[tool] {name}",
+        "auto_tool_calls": "[tool calls: {names} — 使用 --auto 执行]",
+
+        # --- token display ---
+        "token_in": "入: {value}  ",
+        "token_out": "出: {value}  ",
+
+        # --- commands: memory ---
+        "memory_rules_header": "规则 ({n})",
+        "memory_memories_header": "记忆 ({n})",
+
+        # --- commands: lang ---
+        "lang_set_zh": "lang: zh",
+        "lang_set_en": "lang: en",
+
+        # --- commands: think ---
+        "think_effort_usage": "/think effort <low|medium|high>",
+
+        # --- commands: knowledge ---
+        "know_search_prompt": "搜索:",
+        "know_no_matches_for": "无匹配结果",
+        "know_results_count": "━ 结果 ({n})",
+
+        # --- commands: plugin ---
+        "plugin_usage": "用法: /plugin <list|info|enable|disable|create|reload>",
+
+        # --- commands: context display ---
+        "ctx_model_label": "模型:",
+        "ctx_instructions_label": "说明:",
+        "ctx_project_map_label": "项目地图:",
+        "ctx_branch_label": "分支:",
+        "ctx_lines_suffix": "行",
+        "ctx_not_generated": "未生成",
+        "ctx_no_system_prompt": "无系统提示",
+
+        # --- commands: pin ---
+        "pin_unpinned": "已取消固定: {f}",
+        "pin_pinned": "已固定: {f}",
+        "pin_pinned_files": "已固定的文件:",
+        "pin_no_files": "无固定文件",
+
+        # --- commands: diff ---
+        "diff_header": "━━━ git diff ━━━",
+
+        # --- commands: review ---
+        "review_no_changes": "无变更可审查",
+        "review_requested": "已请求审查（{len} 字符 diff）",
+
+        # --- commands: fix ---
+        "fix_no_error": "对话中未发现错误",
+        "fix_request_sent": "已发送分析请求",
+
+        # --- commands: rewind ---
+        "rewind_nothing": "无操作可撤销",
+
+        # --- commands: git ---
+        "git_prompt": "git ",
+
+        # --- commands: plan ---
+        "plan_usage": "用法: /plan <任务描述>",
+        "plan_usage_example": "示例: /plan 重构 user 模块并编写测试",
+        "plan_header_mode": "╔══ 计划模式 ══╗",
+        "plan_task_label": "任务:",
+        "plan_step_1": "1. AI 分析任务并创建编号计划",
+        "plan_step_2": "2. 逐步执行并验证",
+        "plan_step_3": "3. 使用 batch_edit 进行原子化批量修改",
+        "plan_started": "计划已启动。AI 将分析、计划并逐步执行。",
+
+        # --- commands: mcp ---
+        "mcp_action_list": "列出已连接的服务器和工具",
+        "mcp_action_add": "添加新的 MCP 服务器",
+        "mcp_action_remove": "移除 MCP 服务器",
+        "mcp_action_restart": "重启所有 MCP 服务器",
+        "mcp_manager_title": "MCP 管理器",
+        "mcp_servers_header": "MCP 服务器 ({n})",
+        "mcp_tools_header": "工具 ({n})",
+        "mcp_add_args": "参数（空格分隔）:",
+        "mcp_add_env": "环境变量（KEY=val，可选）:",
+        "mcp_remove_title": "移除 MCP 服务器",
+
+        # --- commands: search / history / session ---
+        "search_no_matches_for": "搜索 \"{kw}\" 无匹配会话",
+        "search_found_matches": "找到 {n} 个匹配 \"{kw}\" 的会话",
+        "search_action_load": "加载此会话",
+        "search_action_delete": "删除",
+        "search_session_label": "会话: {name} — {n} 条消息",
+        "history_conversation_header": "── 对话 ({n} 条消息) ──",
+        "session_list_title": "会话列表",
+
+        # --- commands: export ---
+        "export_user_header": "## 用户",
+        "export_assistant_header": "## 助手",
+        "export_tool_result_prefix": "> 工具结果:",
+
+        # --- commands: model ---
+        "cmd_custom_input": "[自定义] 手动输入",
     },
     "en": {
         # --- existing ---
@@ -401,7 +518,7 @@ _STRINGS = {
         "processing": "Processing",
         "show_memory": "View identity, memory and rules",
         "truncated": "Response truncated",
-        "compact_done": "Memory compaction complete",
+        "compact_done": "Memory compaction complete ({count} entries compacted)",
         "think_on": "Reasoning enabled",
         "think_off": "Reasoning disabled",
         "think_display_on": "Reasoning display: persistent",
@@ -492,6 +609,8 @@ _STRINGS = {
         # --- compress ---
         "compress_warning": "Context at {total}/{max_tok} - auto-trimming old tool cycles",
         "compress_critical": "Context critical {total}/{max_tok} - removing oldest exchange",
+        "compress_summarized": "Compressed early conversation ({n} messages → summary)",
+        "compress_label": "Summary",
 
         # --- confirm tool ---
         "confirm_code_exec": "code_executor ({lang})",
@@ -539,6 +658,9 @@ _STRINGS = {
         "main_max_turns": "Max turns reached",
         "main_git_commit_msg": "fluxlite: AI {date}",
         "main_git_commit_ok": "✓ {short}",
+        "main_git_preview": "Changes to commit:",
+        "main_git_confirm": "Commit these changes? (Y/n) [Y=commit]",
+        "main_git_aborted": "Commit cancelled",
 
         # --- tool group display ---
         "toolgroup_quality_issue": "Quality issue",
@@ -613,7 +735,7 @@ _STRINGS = {
 
         # --- sandbox ---
         "sandbox_usage": "Usage: /sandbox <on|off|review|apply|discard|status>",
-        "sandbox_enabled": "Sandbox: enabled",
+        "sandbox_enabled": "Sandbox: enabled (temp: {path})",
         "sandbox_disabled": "Sandbox: disabled",
         "sandbox_no_changes": "No pending changes",
         "sandbox_not_active": "Sandbox not active",
@@ -799,13 +921,125 @@ _STRINGS = {
         "tool_retry_giving_up": "\n  [retried {n}x, giving up]",
         "sandbox_unknown_action": "[sandbox] Unknown action: {action} (use on/off/review/apply/discard/status)",
         "rule_no_rules": "No rules.",
+        "rule_removed": "Rule removed: {content}",
+        "rule_remove_error": "Error: no rule at index {index}",
+        "memory_none": "No memories recorded.",
         "config_updated": "Config updated: {key} = {value}",
         "know_results_header": "[knowledge] Top {n} results for: {query}",
+        "mcp_no_tools": "MCP servers: {servers}\n(no tools advertised)",
+        "mcp_tools_summary": "MCP: {tools} tools across {servers} servers",
 
         # --- knowledge.py ---
         "memory_summary_label": "Session Summary",
         "memory_summary_prompt_en": "Summarize this conversation in 3-5 bullet points. Capture: user preferences, decisions, key facts, project context.\n\n{content}",
         "memory_summary_prompt_zh": "将以下对话总结为 3-5 个要点（中文）。捕获：用户偏好、决策、关键事实、项目上下文。\n\n{content}",
+
+        # --- system_tools.py ---
+        "list_processes_desc": "List running processes with PID, memory, and name. Supports sorting and filtering",
+        "launch_app_desc": "Open an application, file, directory, or URL using the system default handler",
+        "sys_launched": "[system] Launched {target} (PID {pid})",
+        "sys_opened": "[system] Opened {target}",
+        "sys_not_found": "[system] Not found: {target}",
+        "sys_launch_error": "[system] Failed to open {target}: {error}",
+
+        # --- auto mode ---
+        "auto_tool_done": "[tool] {name} done",
+        "auto_tool_running": "[tool] {name}",
+        "auto_tool_calls": "[tool calls: {names} — use --auto to execute]",
+
+        # --- token display ---
+        "token_in": "in: {value}  ",
+        "token_out": "out: {value}  ",
+
+        # --- commands: memory ---
+        "memory_rules_header": "Rules ({n})",
+        "memory_memories_header": "Memories ({n})",
+
+        # --- commands: lang ---
+        "lang_set_zh": "lang: zh",
+        "lang_set_en": "lang: en",
+
+        # --- commands: think ---
+        "think_effort_usage": "/think effort <low|medium|high>",
+
+        # --- commands: knowledge ---
+        "know_search_prompt": "Search: ",
+        "know_no_matches_for": "No matches",
+        "know_results_count": "━ Results ({n})",
+
+        # --- commands: plugin ---
+        "plugin_usage": "Usage: /plugin <list|info|enable|disable|create|reload>",
+
+        # --- commands: context display ---
+        "ctx_model_label": "Model:",
+        "ctx_instructions_label": "Instructions:",
+        "ctx_project_map_label": "Project map:",
+        "ctx_branch_label": "branch:",
+        "ctx_lines_suffix": "lines",
+        "ctx_not_generated": "not generated",
+        "ctx_no_system_prompt": "No system prompt",
+
+        # --- commands: pin ---
+        "pin_unpinned": "Unpinned: {f}",
+        "pin_pinned": "Pinned: {f}",
+        "pin_pinned_files": "Pinned files:",
+        "pin_no_files": "No pinned files",
+
+        # --- commands: diff ---
+        "diff_header": "━━━ git diff ━━━",
+
+        # --- commands: review ---
+        "review_no_changes": "No changes to review",
+        "review_requested": "Review requested ({len} chars of diff)",
+
+        # --- commands: fix ---
+        "fix_no_error": "No recent error found in conversation",
+        "fix_request_sent": "Analysis request sent",
+
+        # --- commands: rewind ---
+        "rewind_nothing": "Nothing to rewind",
+
+        # --- commands: git ---
+        "git_prompt": "git ",
+
+        # --- commands: plan ---
+        "plan_usage": "Usage: /plan <task description>",
+        "plan_usage_example": "Example: /plan refactor the user module with tests",
+        "plan_header_mode": "╔══ Planning Mode ══╗",
+        "plan_task_label": "Task:",
+        "plan_step_1": "1. AI analyzes task and creates a numbered plan",
+        "plan_step_2": "2. Executes each step with verification",
+        "plan_step_3": "3. Uses batch_edit for atomic multi-file changes",
+        "plan_started": "Plan started. AI will analyze, plan, and execute step by step.",
+
+        # --- commands: mcp ---
+        "mcp_action_list": "List connected servers & tools",
+        "mcp_action_add": "Add a new MCP server",
+        "mcp_action_remove": "Remove an MCP server",
+        "mcp_action_restart": "Restart all MCP servers",
+        "mcp_manager_title": "MCP Manager",
+        "mcp_servers_header": "MCP Servers ({n})",
+        "mcp_tools_header": "Tools ({n})",
+        "mcp_add_args": "Arguments (space-separated):",
+        "mcp_add_env": "Env vars (KEY=val, optional):",
+        "mcp_remove_title": "Remove MCP server",
+
+        # --- commands: search / history / session ---
+        "search_no_matches_for": "No sessions match \"{kw}\"",
+        "search_found_matches": "Found {n} session(s) matching \"{kw}\"",
+        "search_action_load": "Load this session",
+        "search_action_delete": "Delete",
+        "search_session_label": "Session: {name} — {n} msgs",
+        "history_conversation_header": "── Conversation ({n} msgs) ──",
+        "session_list_title": "Sessions",
+
+        # --- commands: export ---
+        "export_user_header": "## User",
+        "export_assistant_header": "## Assistant",
+        "export_tool_result_prefix": "> Tool result:",
+
+        # --- commands: model ---
+        "cmd_custom_input": "[custom] Custom input",
     },
 }
 

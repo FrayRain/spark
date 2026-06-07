@@ -12,7 +12,8 @@ class TestFileWrite:
             result = file_ops.write(str(f), "hello world")
             assert f.exists()
             assert f.read_text() == "hello world"
-            assert "Written" in result
+            # Result should reference the file path (i18n-independent)
+            assert "test.txt" in result
 
     def test_overwrite_existing(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -20,7 +21,7 @@ class TestFileWrite:
             f.write_text("old")
             result = file_ops.write(str(f), "new")
             assert f.read_text() == "new"
-            assert "Written" in result
+            assert "test.txt" in result
 
 
 class TestFileRead:
@@ -33,7 +34,8 @@ class TestFileRead:
 
     def test_read_not_found(self):
         result = file_ops.read("/nonexistent/path_12345.txt")
-        assert "not found" in result.lower() or "file not found" in result.lower()
+        assert "path_12345" in result
+        assert "nonexistent".lower() in result.lower() or "not found" in result.lower() or "找不到" in result
 
 
 class TestFileEdit:
@@ -43,14 +45,14 @@ class TestFileEdit:
             f.write_text("hello world")
             result = file_ops.edit(str(f), "hello", "goodbye")
             assert f.read_text() == "goodbye world"
-            assert "Replaced" in result
+            assert "test.txt" in result
 
     def test_old_string_not_found(self):
         with tempfile.TemporaryDirectory() as tmp:
             f = Path(tmp) / "test.txt"
             f.write_text("hello world")
             result = file_ops.edit(str(f), "nonexistent", "replacement")
-            assert "not found" in result
+            assert "not found" in result.lower() or "找不到" in result or "old_string" in result
 
 
 class TestFileAppend:
@@ -60,7 +62,7 @@ class TestFileAppend:
             f.write_text("hello")
             result = file_ops.append(str(f), " world")
             assert f.read_text() == "hello world"
-            assert "Appended" in result
+            assert "test.txt" in result
 
     def test_append_creates_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -77,11 +79,12 @@ class TestFileDelete:
             f.write_text("hello")
             result = file_ops.delete(str(f))
             assert not f.exists()
-            assert "Deleted" in result
+            assert "test.txt" in result
 
     def test_delete_not_found(self):
         result = file_ops.delete("/nonexistent/path_12345.txt")
-        assert "not found" in result.lower()
+        assert "path_12345" in result
+        assert "not found" in result.lower() or "找不到" in result
 
 
 class TestFileList:
@@ -105,7 +108,7 @@ class TestFileList:
 
     def test_list_nonexistent(self):
         result = file_ops.list_dir("/nonexistent_dir_12345")
-        assert "not found" in result.lower()
+        assert "not found" in result.lower() or "找不到" in result
 
 
 class TestSafePath:

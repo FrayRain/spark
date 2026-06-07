@@ -40,7 +40,8 @@ class _TerminalSession:
                 stdout=subprocess.PIPE,
                 stderr=subprocess.STDOUT,
                 env=env,
-                text=True,
+                encoding="utf-8",
+                errors="replace",
                 bufsize=1,
                 cwd=str(Path.cwd()),
             )

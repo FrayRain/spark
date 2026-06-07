@@ -26,6 +26,8 @@ API_PRESETS = {
     "5": {"name": "Groq", "base_url": "https://api.groq.com/openai/v1",
           "models": ["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "meta-llama/llama-4-scout-17b-16e-instruct", "qwen/qwen3-32b"]},
     "6": {"name": "Custom (自定义/Custom)", "base_url": "", "models": []},
+    "7": {"name": "Ollama (Local)", "base_url": "http://localhost:11434/v1",
+          "models": ["llama3.2", "qwen2.5", "mistral", "deepseek-coder", "codellama", "deepseek-r1:7b"]},
 }
 
 try:

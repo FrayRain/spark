@@ -9,7 +9,10 @@ description = "Lightweight terminal-native AI coding agent with plugins, MCP, sa
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
-authors = [{name = "Volsa"}]
+authors = [
+    {name = "Volsa"},
+    {name = "Claude (AI)"},
+]
 keywords = ["cli", "ai", "agent", "llm", "assistant", "terminal"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -38,6 +41,7 @@ dependencies = [
 [project.optional-dependencies]
 tiktoken = ["tiktoken>=0.5.0"]
 playwright = ["playwright>=1.40.0"]
+knowledge = ["sentence-transformers>=2.2.0", "numpy>=1.21.0"]
 
 [project.urls]
 Homepage = "https://github.com/SVolsa/fluxlite"

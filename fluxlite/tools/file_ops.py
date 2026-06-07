@@ -47,7 +47,7 @@ def _safe_path(path_str: str) -> tuple[Path, str]:
 
 
 def write(path: str, content: str) -> str:
-    p, _ = _safe_path(_sandbox_resolve(path))
+    p, _msg = _safe_path(_sandbox_resolve(path))
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(content, encoding="utf-8")
@@ -58,13 +58,13 @@ def write(path: str, content: str) -> str:
 
 def read(path: str) -> str:
     sandboxed = _sandbox_resolve(path)
-    p, _ = _safe_path(sandboxed)
+    p, _msg = _safe_path(sandboxed)
     try:
         if p.exists():
             return p.read_text(encoding="utf-8")
     except (OSError, PermissionError) as e:
         return _("file_read_failed", e=e)
-    p, _ = _safe_path(path)
+    p, _msg = _safe_path(path)
     try:
         if not p.exists():
             return _("file_not_found", path=p)
@@ -74,7 +74,7 @@ def read(path: str) -> str:
 
 
 def edit(path: str, old_string: str, new_string: str) -> str:
-    p, _ = _safe_path(_sandbox_resolve(path))
+    p, _msg = _safe_path(_sandbox_resolve(path))
     if not p.exists():
         return _("file_not_found", path=p)
     try:
@@ -92,7 +92,7 @@ def edit(path: str, old_string: str, new_string: str) -> str:
 
 
 def append(path: str, content: str) -> str:
-    p, _ = _safe_path(_sandbox_resolve(path))
+    p, _msg = _safe_path(_sandbox_resolve(path))
     try:
         p.parent.mkdir(parents=True, exist_ok=True)
         with open(p, "a", encoding="utf-8") as f:
@@ -103,7 +103,7 @@ def append(path: str, content: str) -> str:
 
 
 def delete(path: str) -> str:
-    p, _ = _safe_path(_sandbox_resolve(path))
+    p, _msg = _safe_path(_sandbox_resolve(path))
     if not p.exists():
         return _("file_not_found", path=p)
     try:
@@ -114,7 +114,7 @@ def delete(path: str) -> str:
 
 
 def list_dir(path: str = ".", pattern: str = "") -> str:
-    p, _ = _safe_path(_sandbox_resolve(path))
+    p, _msg = _safe_path(_sandbox_resolve(path))
     if not p.exists():
         return f"[file] Directory not found: {p}"
     if not p.is_dir():

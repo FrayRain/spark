@@ -1,4 +1,6 @@
-import pytest
+"""Test memory module — current API (memories list, no identity/rules)."""
+
+import json
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -7,69 +9,55 @@ import fluxlite.memory as mem
 
 
 class TestMemory:
-    def _memory(self):
-        """Return fresh isolated memory dict."""
-        return mem.load_memory()
+    def _memories(self):
+        """Return empty memories list via the module API."""
+        return mem.load_memories()
 
     @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
     def test_load_default(self, _):
-        memory = self._memory()
-        assert "identity" in memory
-        assert "memories" in memory
-        assert "rules" in memory
-        assert memory["identity"]["name"] == ""
+        entries = self._memories()
+        assert isinstance(entries, list)
+        assert len(entries) == 0
 
     @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
     def test_save_and_load(self, _):
-        memory = self._memory()
-        memory["identity"]["name"] = "TestBot"
-        memory["identity"]["user_name"] = "Tester"
-        mem.save_memory(memory)
-        loaded = mem.load_memory()
-        assert loaded["identity"]["name"] == "TestBot"
-        assert loaded["identity"]["user_name"] == "Tester"
+        mem.save_memories([{"id": "1", "content": "hello", "created_at": "now"}])
+        entries = mem.load_memories()
+        assert len(entries) == 1
+        assert entries[0]["content"] == "hello"
 
     @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
     def test_add_memory(self, _):
-        memory = self._memory()
-        mem.add_memory(memory, "User likes Python")
-        assert len(memory["memories"]) == 1
-        assert memory["memories"][0]["content"] == "User likes Python"
+        entry = mem.add_memory("User likes Python")
+        assert entry["content"] == "User likes Python"
+        assert "id" in entry
+        assert "created_at" in entry
 
     @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
     def test_multiple_memories(self, _):
-        memory = self._memory()
-        mem.add_memory(memory, "Memory 1")
-        mem.add_memory(memory, "Memory 2")
-        mem.add_memory(memory, "Memory 3")
-        assert len(memory["memories"]) == 3
-
-    @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
-    def test_add_rule(self, _):
-        memory = self._memory()
-        mem.add_rule(memory, "Be concise")
-        assert len(memory["rules"]) == 1
-        assert memory["rules"][0] == "Be concise"
-
-    @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
-    def test_remove_rule(self, _):
-        memory = self._memory()
-        mem.add_rule(memory, "Rule 1")
-        mem.add_rule(memory, "Rule 2")
-        assert mem.remove_rule(memory, 0) is True
-        assert len(memory["rules"]) == 1
-        assert memory["rules"][0] == "Rule 2"
-
-    @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
-    def test_remove_rule_invalid_index(self, _):
-        memory = self._memory()
-        assert mem.remove_rule(memory, 5) is False
-        assert mem.remove_rule(memory, -1) is False
+        mem.add_memory("Memory 1")
+        mem.add_memory("Memory 2")
+        mem.add_memory("Memory 3")
+        entries = mem.load_memories()
+        assert len(entries) == 3
 
     @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
     def test_memory_persistence(self, _):
-        memory = self._memory()
-        mem.add_memory(memory, "Persistent memory")
-        loaded = mem.load_memory()
-        assert len(loaded["memories"]) == 1
-        assert loaded["memories"][0]["content"] == "Persistent memory"
+        mem.add_memory("Persistent memory")
+        entries = mem.load_memories()
+        assert len(entries) == 1
+        assert entries[0]["content"] == "Persistent memory"
+
+    @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
+    def test_load_corrupted_file(self, _):
+        path = mem.MEMORY_PATH
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("not valid json", encoding="utf-8")
+        entries = mem.load_memories()
+        assert entries == []
+
+    @patch("fluxlite.memory.MEMORY_PATH", new_callable=lambda: Path(tempfile.mkdtemp()) / "mem.json")
+    def test_save_empty(self, _):
+        mem.save_memories([])
+        entries = mem.load_memories()
+        assert entries == []

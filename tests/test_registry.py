@@ -26,7 +26,9 @@ class TestToolRegistry:
 
     def test_execute_unknown_tool(self):
         result = execute_tool("nonexistent_tool_xyz", {})
-        assert "Unknown" in result
+        # Should contain the tool name regardless of i18n language
+        assert "nonexistent_tool_xyz" in result
+        assert "error" in result.lower() or "未知" in result or "x " in result
 
     def test_file_write_and_read(self):
         result = execute_tool("file_write", {"path": "/tmp/fluxlite_test.txt", "content": "test"})

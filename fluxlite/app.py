@@ -6,6 +6,7 @@ import time
 import subprocess
 from datetime import datetime
 from pathlib import Path
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from rich.markdown import Markdown
 from rich.text import Text
@@ -35,7 +36,7 @@ def _now():
 
 def _print_user(msg: str):
     ts = _now()
-    console.print(f"\n[{GREEN}]You[/]  [{GRAY}]{ts}[/]")
+    console.print(f"\n[{GREEN}]{_('user_label')}[/]  [{GRAY}]{ts}[/]")
     console.print(Text(msg, style=Style(color=GRAY_LIGHT)))
 
 
@@ -44,16 +45,16 @@ def _setup_identity(profile):
     if identity.get("name"):
         return identity["name"], identity.get("user_name", "")
 
-    console.print(f"\n  [{CYAN}]Identity Setup (首次设置身份)[/]")
-    console.print(f"  [{GRAY}]Let's get to know each other![/]")
+    console.print(f"\n  [{CYAN}]{_('identity_title')}[/]")
+    console.print(f"  [{GRAY}]{_('identity_intro')}[/]")
 
-    user_name = _ask_input(f"  [{GREEN}]What should I call you? (如何称呼你)[/]: ")
+    user_name = _ask_input(f"  [{GREEN}]{_('identity_ask_name')}[/]: ")
     profile["identity"]["user_name"] = user_name.strip() if user_name.strip() else "User"
 
-    name = _ask_input(f"  [{CYAN}]What would you like to name me? (给我取个名字)[/]: ")
+    name = _ask_input(f"  [{CYAN}]{_('identity_ask_ai_name')}[/]: ")
     profile["identity"]["name"] = name.strip() if name.strip() else "FluxLite"
 
-    personality = _ask_input(f"  [{PURPLE}]Describe my personality (optional / 描述我的性格)[/]: ")
+    personality = _ask_input(f"  [{PURPLE}]{_('identity_ask_personality')}[/]: ")
     profile["identity"]["personality"] = personality.strip() if personality.strip() else ""
 
     profile["identity"]["created_at"] = datetime.now().isoformat()
@@ -173,7 +174,7 @@ def build_system_prompt(lang: str, safe_mode: bool, tools: list, profile: dict =
             rules_block = "\n\nUser rules:\n" + "\n".join(f"- {r}" for r in rules_list)
 
     if lang == "zh":
-        return f"""你是 {agent_name}，一个运行在终端的轻量级 AI agent。
+        return f"""你是 {agent_name}，一个运行在终端的轻量级 AI agent。由 Volsa 开发，你的GitHub 仓库是 https://github.com/SVolsa/fluxlite。
 你可以使用以下工具：
 
 {tool_desc}
@@ -204,7 +205,7 @@ MCP (外部服务集成):
 - 用中文回答
 - 对于不确定的概念或事物禁止臆想，如果用户了解可以询问用户，或者使用工具搜索相关资料{identity_block}{rules_block}"""
 
-    return f"""You are {agent_name}, a lightweight AI agent running in the terminal.
+    return f"""You are {agent_name}, a lightweight AI agent running in the terminal.Developed by Volsa, your GitHub repository is https://github.com/SVolsa/fluxlite.
 Available tools:
 
 {tool_desc}
@@ -250,6 +251,7 @@ from .context import (
 
 _confirmed_tools: set[str] = set()
 _cumulative_tokens = {"input": 0, "output": 0}
+_NON_PARALLEL_TOOLS = frozenset({"terminal", "browser", "mcp_call", "hook_run", "spawn_agents"})
 
 _MODEL_MAX_TOKENS: dict[str, int] = {
     "deepseek-v4-flash": 65536,
@@ -266,6 +268,11 @@ _MODEL_MAX_TOKENS: dict[str, int] = {
     "llama-3.3-70b-versatile": 131072,
     "mixtral-8x7b-32768": 32768,
     "gemma2-9b-it": 8192,
+    "llama3.2": 131072,
+    "qwen2.5": 32768,
+    "mistral": 32768,
+    "deepseek-coder": 16384,
+    "codellama": 16384,
 }
 _DEFAULT_MAX_TOKENS = 65536
 
@@ -350,12 +357,55 @@ def _auto_debug_analysis(code: str, error: str, provider, lang: str = "zh") -> s
         return None
 
 
-def _auto_compress(messages: list, max_tok: int):
+def _summarize_messages(messages: list, start: int, end: int, provider) -> str | None:
+    """Use LLM to summarize a range of messages (excludes tool results)."""
+    text = ""
+    for m in messages[start:end]:
+        role = m["role"]
+        content = m.get("content", "")
+        if role == "tool":
+            continue
+        if content:
+            if len(content) > 200:
+                content = content[:200] + "..."
+            text += f"[{role}] {content}\n"
+    if not text.strip():
+        return None
+    prompt = (
+        "Summarize the following conversation exchange in 2-3 sentences. "
+        "Focus on key decisions, code changes, and important information. Be concise.\n\n"
+        + text
+    )
+    try:
+        result = provider.chat(messages=[{"role": "user", "content": prompt}], tools=[])
+        return (result.content or "").strip()[:500]
+    except Exception:
+        return None
+
+
+def _auto_compress(messages: list, max_tok: int, provider=None):
     total = _cumulative_tokens["input"] + _cumulative_tokens["output"]
-    if total < max_tok * 0.88:
+    if total < max_tok * 0.80:
         return
+
+    if total >= max_tok * 0.95:
+        console.print(f"  [{RED}]! {_('compress_critical', total=total, max_tok=max_tok)}[/]")
+
+    # Try smart summarization first (if provider available and > 80%)
+    if provider is not None and total >= max_tok * 0.80:
+        for i in range(1, len(messages) - 1):
+            if messages[i]["role"] == "user" and messages[i+1]["role"] == "assistant" \
+               and not messages[i+1].get("tool_calls"):
+                summary = _summarize_messages(messages, i, i+2, provider)
+                if summary:
+                    messages[i:i+2] = [{"role": "user", "content": f"[{_('compress_label')}] {summary}"}]
+                    console.print(f"  [{PURPLE}]✓ {_('compress_summarized', n=2)}[/]")
+                    return
+                break
+
+    # Fallback: old behavior
     if total < max_tok * 0.95:
-        console.print(f"  [{ORANGE}]! Context at {total}/{max_tok} — auto-trimming old tool cycles[/]")
+        console.print(f"  [{ORANGE}]! {_('compress_warning', total=total, max_tok=max_tok)}[/]")
         for i in range(1, len(messages)):
             if messages[i].get("tool_calls"):
                 del messages[i]
@@ -363,7 +413,7 @@ def _auto_compress(messages: list, max_tok: int):
                     del messages[i]
                 break
         return
-    console.print(f"  [{RED}]! Context critical {total}/{max_tok} — removing oldest exchange[/]")
+
     for i in range(1, len(messages) - 1):
         if messages[i]["role"] == "user" and messages[i + 1]["role"] == "assistant":
             del messages[i:i + 2]
@@ -378,7 +428,7 @@ def _confirm_tool(name: str, args: dict) -> bool:
         lang = args.get("language", "")
         code = args.get("code", "")
         snippet = (code[:300] + "...") if len(code) > 300 else code
-        console.print(f"\n  [{ORANGE}]code_executor ({lang})[/]")
+        console.print(f"\n  [{ORANGE}]{_('confirm_code_exec', lang=lang)}[/]")
         for line in snippet.split("\n")[:8]:
             console.print(f"  [{DIM}]{line}[/]")
     elif name in ("file_write", "file_edit", "file_delete", "file_append", "git_commit"):
@@ -395,11 +445,11 @@ def _confirm_tool(name: str, args: dict) -> bool:
     else:
         return True
 
-    choice = radio_select(f"Allow {name}?", [
-        ("allow", "Allow once"),
-        ("skip", "Skip this call"),
-        ("deny", "Deny"),
-        ("always", f"Allow all {name} this session"),
+    choice = radio_select(_('confirm_allow_title', name=name), [
+        ("allow", _("confirm_allow_once")),
+        ("skip", _("confirm_skip")),
+        ("deny", _("confirm_deny")),
+        ("always", _("confirm_allow_all", name=name)),
     ])
 
     if choice == "always":
@@ -561,13 +611,13 @@ def run_app(
     plugin_manager.discover()
     plugin_count = len(plugin_manager._plugins)
     if plugin_count:
-        console.print(f"  [{GREEN}]Plugins: {plugin_count} loaded[/]")
+        console.print(f"  [{GREEN}]{_('startup_plugins', count=plugin_count)}[/]")
 
     from .mcp_client import init_all as mcp_init
     mcp_errors = mcp_init()
     if mcp_errors:
         for e in mcp_errors:
-            console.print(f"  [{ORANGE}]MCP: {e}[/]")
+            console.print(f"  [{ORANGE}]{_('startup_mcp_error', e=e)}[/]")
 
     tool_schemas = get_tool_schemas()
     system_prompt = build_system_prompt(lang, safe_mode, tool_schemas, profile)
@@ -627,15 +677,27 @@ def run_app(
                     break
 
                 openai_tool_calls = []
-                tool_results = []
                 for tc in tool_calls:
-                    sys.stdout.write(f"\n[tool] {tc.name}\n")
-                    r = execute_tool(tc.name, tc.arguments)
-                    tool_results.append((tc, r))
                     openai_tool_calls.append({
                         "id": tc.id, "type": "function",
                         "function": {"name": tc.name, "arguments": json.dumps(tc.arguments)},
                     })
+                tool_results = []
+                if tool_calls:
+                    _can_parallel = not any(tc.name in _NON_PARALLEL_TOOLS for tc in tool_calls)
+                    if _can_parallel:
+                        with ThreadPoolExecutor(max_workers=min(len(tool_calls), 5)) as ex:
+                            future_map = {ex.submit(execute_tool, tc.name, tc.arguments): tc for tc in tool_calls}
+                            for future in as_completed(future_map):
+                                tc = future_map[future]
+                                r = future.result()
+                                sys.stdout.write(f"\n{_('auto_tool_done', name=tc.name)}\n")
+                                tool_results.append((tc, r))
+                    else:
+                        for tc in tool_calls:
+                            sys.stdout.write(f"\n{_('auto_tool_running', name=tc.name)}\n")
+                            r = execute_tool(tc.name, tc.arguments)
+                            tool_results.append((tc, r))
 
                 msg = {"role": "assistant", "content": content or "",
                        "tool_calls": openai_tool_calls}
@@ -660,16 +722,16 @@ def run_app(
                 sys.stdout.write("\n" if not content.endswith("\n") else "")
             if tool_calls:
                 names = [tc.name for tc in tool_calls]
-                sys.stdout.write(f"\n[tool calls: {', '.join(names)} — use --auto to execute]\n")
+                sys.stdout.write(f"\n{_('auto_tool_calls', names=', '.join(names))}\n")
         return
 
     session = _load_session()
     if session:
         messages.extend(session)
         msg_count = sum(1 for m in session if m.get("role") in ("user", "assistant"))
-        console.print(f"  [{GRAY}]Loaded session ({msg_count} msgs) — /last to view[/]")
+        console.print(f"  [{GRAY}]{_('startup_session_loaded', count=msg_count)}[/]")
 
-    console.print(f"  [{GRAY}]model: {model}     /help  /tools  /memory  /exit[/]")
+    console.print(f"  [{GRAY}]{_('startup_info_bar', model=model)}[/]")
     console.print(f"  [{GRAY}]{'='*45}[/]")
 
     while True:
@@ -681,7 +743,7 @@ def run_app(
             continue
         except KeyboardInterrupt:
             console.print()
-            confirm = _ask_input(f"  [{ORANGE}]Exit? (y/N)[/] ")
+            confirm = _ask_input(f"  [{ORANGE}]{_('main_exit_confirm')}[/] ")
             if confirm.strip().lower() in ("y", "yes"):
                 _save_session(messages[1:])
                 console.print(f"\n  [{DIM}]{_('exit')}[/]")
@@ -715,7 +777,7 @@ def run_app(
                 _save_session(messages[1:])
                 messages[:] = [messages[0]]
                 _reset_session()
-                console.print(f"  [{CYAN}]New session started[/]")
+                console.print(f"  [{CYAN}]{_('main_new_session')}[/]")
             if CommandState.session_load_requested:
                 CommandState.session_load_requested = False
                 _save_session(messages[1:])
@@ -734,7 +796,7 @@ def run_app(
                                 console.print(Markdown(content, code_theme="monokai"))
                 CommandState.session_load_data = None
                 _reset_session()
-                console.print(f"\n  [{CYAN}]Session loaded[/]")
+                console.print(f"\n  [{CYAN}]{_('main_session_loaded')}[/]")
             if should_exit:
                 _save_session(messages[1:])
                 break
@@ -757,7 +819,7 @@ def run_app(
             received = result.get("received", False)
             truncated = result.get("truncated", False)
             if not received:
-                console.print(f"\n  [{ORANGE}]! {_('error')}: AI returned empty response[/]")
+                console.print(f"\n  [{ORANGE}]! {_('main_empty_response')}[/]")
                 _save_session(messages[1:])
                 break
 
@@ -765,26 +827,26 @@ def run_app(
                 usage_str = ""
                 if "prompt_tokens" in last_usage:
                     _cumulative_tokens["input"] += last_usage["prompt_tokens"]
-                    usage_str += f"in: {last_usage['prompt_tokens']}  "
+                    usage_str += _("token_in", value=last_usage['prompt_tokens'])
                 elif "input_tokens" in last_usage:
                     _cumulative_tokens["input"] += last_usage["input_tokens"]
-                    usage_str += f"in: {last_usage['input_tokens']}  "
+                    usage_str += _("token_in", value=last_usage['input_tokens'])
                 if "completion_tokens" in last_usage:
                     _cumulative_tokens["output"] += last_usage["completion_tokens"]
-                    usage_str += f"out: {last_usage['completion_tokens']}  "
+                    usage_str += _("token_out", value=last_usage['completion_tokens'])
                 elif "output_tokens" in last_usage:
                     _cumulative_tokens["output"] += last_usage["output_tokens"]
-                    usage_str += f"out: {last_usage['output_tokens']}  "
+                    usage_str += _("token_out", value=last_usage['output_tokens'])
                 if usage_str:
                     total = _cumulative_tokens["input"] + _cumulative_tokens["output"]
                     max_tok = _get_max_tokens(model)
                     bar = _render_progress_bar(total, max_tok)
                     console.print(f"  [{DIM}]\u2502 {usage_str}[/]")
-                    console.print(f"  [{DIM}]\u2502 {_('cumulative')}: in {_cumulative_tokens['input']} + out {_cumulative_tokens['output']}[/]  [{CYAN}]{bar}[/]")
+                    console.print(f"  [{DIM}]\u2502 {_('cumulative')}: {_('token_in', value=_cumulative_tokens['input'])} + {_('token_out', value=_cumulative_tokens['output'])}[/]  [{CYAN}]{bar}[/]")
                     if total > max_tok * 0.8:
-                        console.print(f"  [{ORANGE}]! ctx ~{total}/{max_tok} \u2014 /truncate or /rewind advised[/]")
+                        console.print(f"  [{ORANGE}]! {_('main_context_warning', total=total, max_tok=max_tok)}[/]")
                     if total > max_tok * 0.88:
-                        _auto_compress(messages, max_tok)
+                        _auto_compress(messages, max_tok, provider=provider)
 
             if not pending_tool_calls:
                 if assistant_content:
@@ -862,12 +924,9 @@ def run_app(
                             console.print(f"  ⎿  [{count}] result: {rn[:150]}[/]")
                 _tool_group.clear()
 
+            # Phase 1: Confirmations (sequential — interactive)
+            approved_tools = []
             for tc in pending_tool_calls:
-                args_str = ", ".join(f"{k}={v}" for k, v in tc.arguments.items())
-
-                if _tool_group and _tool_group[0][0] != tc.name:
-                    _flush_tool_group()
-
                 if safe_mode:
                     confirm = _confirm_tool(tc.name, tc.arguments)
                     if confirm == "skip":
@@ -877,16 +936,38 @@ def run_app(
                         messages.append({
                             "role": "tool",
                             "tool_call_id": tc.id,
-                            "content": "[cancelled] Operation cancelled by user",
+                            "content": _("confirm_cancelled"),
                         })
-                        console.print(f"\n  [{ORANGE}]{tc.name}[/]  [{RED}]cancelled[/]")
+                        console.print(f"\n  [{ORANGE}]{_('confirm_cancel_status', name=tc.name)}[/]")
                         continue
-                sys.stderr.write(f"  {_('processing')}...\n")
-                sys.stderr.flush()
-                try:
-                    result = execute_tool(tc.name, tc.arguments)
-                finally:
-                    pass
+                approved_tools.append(tc)
+
+            if not approved_tools:
+                pending_tool_calls = []
+                continue
+
+            # Phase 2: Execute tools (parallel for thread-safe tools, sequential otherwise)
+            sys.stderr.write(f"  {_('processing')}...\n")
+            sys.stderr.flush()
+            results_map = {}
+            _can_parallel = not any(tc.name in _NON_PARALLEL_TOOLS for tc in approved_tools)
+            if _can_parallel:
+                with ThreadPoolExecutor(max_workers=min(len(approved_tools), 5)) as ex:
+                    future_map = {ex.submit(execute_tool, tc.name, tc.arguments): tc for tc in approved_tools}
+                    for future in as_completed(future_map):
+                        tc = future_map[future]
+                        results_map[tc.id] = future.result()
+            else:
+                for tc in approved_tools:
+                    results_map[tc.id] = execute_tool(tc.name, tc.arguments)
+
+            # Phase 3: Process results in original order (for display grouping + message order)
+            for tc in approved_tools:
+                result = results_map[tc.id]
+                args_str = ", ".join(f"{k}={v}" for k, v in tc.arguments.items())
+
+                if _tool_group and _tool_group[0][0] != tc.name:
+                    _flush_tool_group()
 
                 quality_lines = []
 
@@ -897,9 +978,9 @@ def run_app(
                         if qe:
                             quality_lines.append(qe)
                             result = f"{result}\n\n{qe}"
-                            choice = radio_select(f"Auto-fix {Path(fpath).name}?", [
-                                ("fix", "Fix with AI"),
-                                ("skip", "Skip (AI will see error)"),
+                            choice = radio_select(_('toolgroup_auto_fix_prompt', name=Path(fpath).name), [
+                                ("fix", _("toolgroup_fix_option")),
+                                ("skip", _("toolgroup_skip_option")),
                             ])
                             if choice == "fix":
                                 fixed = _auto_fix_file(fpath, qe, provider)
@@ -907,13 +988,13 @@ def run_app(
                                     Path(fpath).write_text(fixed, encoding="utf-8")
                                     recheck = _quality_gate(fpath)
                                     if recheck:
-                                        quality_lines.append(f"Fix failed: {recheck}")
+                                        quality_lines.append(_("toolgroup_fix_failed", detail=recheck))
                                         result += f"\n\n[auto-fix FAILED]: {recheck}"
                                     else:
-                                        quality_lines.append("✓ File fixed")
+                                        quality_lines.append(_("toolgroup_fix_ok"))
                                         result += "\n\n[auto-fix OK]"
                                 else:
-                                    quality_lines.append("Auto-fix skipped (LLM error)")
+                                    quality_lines.append(_("toolgroup_fix_skipped"))
 
                 # Auto-debug: analyze code execution errors
                 if (getattr(CommandState, 'auto_debug', True) and tc.name == "code_executor"
@@ -942,21 +1023,36 @@ def run_app(
             pending_tool_calls = []
 
         if turn >= 10:
-            console.print(f"  [{ORANGE}]Max turns reached[/]")
+            console.print(f"  [{ORANGE}]{_('main_max_turns')}[/]")
 
         if CommandState.git_autocommit and _has_file_changes:
             try:
-                msg = f"fluxlite: AI {datetime.now().strftime('%Y-%m-%d %H:%M')}"
                 subprocess.run(
                     ["git", "add", "-A"],
                     capture_output=True, text=True, timeout=10,
                 )
+                # Show diff preview before committing
+                diff = subprocess.run(
+                    ["git", "diff", "--cached", "--stat"],
+                    capture_output=True, text=True, timeout=10,
+                )
+                stat = diff.stdout.strip()
+                if stat:
+                    console.print(f"\n  [{CYAN}]{_('main_git_preview')}[/]")
+                    for line in stat.split("\n"):
+                        console.print(f"  [{DIM}]{line}[/]")
+                    confirm = _ask_input(f"  [{ORANGE}]{_('main_git_confirm')}[/] ")
+                    if confirm.strip().lower() not in ("y", "yes", ""):
+                        subprocess.run(["git", "reset", "HEAD", "."], capture_output=True, text=True, timeout=10)
+                        console.print(f"  [{GRAY}]{_('main_git_aborted')}[/]")
+                        return
+                msg = _("main_git_commit_msg", date=datetime.now().strftime('%Y-%m-%d %H:%M'))
                 r = subprocess.run(
                     ["git", "commit", "-m", msg],
                     capture_output=True, text=True, timeout=10,
                 )
                 if r.returncode == 0:
                     short = r.stdout.strip().split("\n")[-1] if r.stdout.strip() else "committed"
-                    console.print(f"  [{GREEN}]\\u2713 {short}[/]")
+                    console.print(f"  [{GREEN}]{_('main_git_commit_ok', short=short)}[/]")
             except (subprocess.TimeoutExpired, OSError, PermissionError):
                 pass

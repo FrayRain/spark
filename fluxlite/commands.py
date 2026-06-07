@@ -46,6 +46,14 @@ MODEL_PRESETS = {
         ("4", "Claude Sonnet 4 (1M ctx)", "claude-sonnet-4-1m"),
         ("5", "Claude Opus 4 (1M ctx)", "claude-opus-4-1m"),
     ],
+    "ollama": [
+        ("1", "Llama 3.2 (3B)", "llama3.2"),
+        ("2", "Qwen 2.5 (7B)", "qwen2.5"),
+        ("3", "Mistral (7B)", "mistral"),
+        ("4", "DeepSeek Coder (6.7B)", "deepseek-coder"),
+        ("5", "CodeLlama (7B)", "codellama"),
+        ("6", "DeepSeek R1 (7B)", "deepseek-r1:7b"),
+    ],
 }
 
 
@@ -62,7 +70,7 @@ def show_memory():
 
     rules = profile.get("rules", [])
     if rules:
-        console.print(f"\n  [{ORANGE}]Rules ({len(rules)})[/]")
+        console.print(f"\n  [{ORANGE}]{_('memory_rules_header', n=len(rules))}[/]")
         for i, r in enumerate(rules):
             console.print(f"    {i+1}. {r}")
     else:
@@ -70,7 +78,7 @@ def show_memory():
 
     entries = load_memories()
     if entries:
-        console.print(f"\n  [{PURPLE}]Memories ({len(entries)})[/]")
+        console.print(f"\n  [{PURPLE}]{_('memory_memories_header', n=len(entries))}[/]")
         for m in entries[-5:]:
             console.print(f"    {m.get('content', '')[:80]}")
     console.print()
@@ -102,7 +110,7 @@ def compact_memory():
         "created_at": datetime.now().isoformat(),
     }
     save_memories([compacted])
-    console.print(f"  [{PURPLE}]{_('compact_done')} ({len(entries)} entries compacted)[/]")
+    console.print(f"  [{PURPLE}]{_('compact_done', count=len(entries))}[/]")
 
 
 def estimate_tokens(text: str) -> int:
@@ -234,7 +242,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
             for key, label, name in presets:
                 marker = "[bold]" if name == provider.model else ""
                 console.print(f"    [{GREEN}]{key}[/]) {marker}{label}[/]")
-            console.print(f"    [custom] Custom input")
+            console.print(f"    [custom] {_('cmd_custom_input')}[/]")
         choice = get_input(f"  {_('cmd_select_model')} ")
         choice = choice.strip()
         if choice == "custom":
@@ -255,10 +263,10 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         choice = choice.strip()
         if choice in ("1", "zh"):
             set_lang("zh")
-            console.print(f"  [{CYAN}]lang: zh[/]")
+            console.print(f"  [{CYAN}]{_('lang_set_zh')}[/]")
         elif choice in ("2", "en"):
             set_lang("en")
-            console.print(f"  [{CYAN}]lang: en[/]")
+            console.print(f"  [{CYAN}]{_('lang_set_en')}[/]")
         return False
 
     if cmd == "/new":
@@ -348,11 +356,11 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
                     if role == "system":
                         continue
                     elif role == "user":
-                        f.write(f"## User\n\n{content}\n\n")
+                        f.write(f"{_('export_user_header')}\n\n{content}\n\n")
                     elif role == "assistant":
-                        f.write(f"## Assistant\n\n{content}\n\n")
+                        f.write(f"{_('export_assistant_header')}\n\n{content}\n\n")
                     elif role == "tool":
-                        f.write(f"> Tool result: {content[:200]}\n\n")
+                        f.write(f"{_('export_tool_result_prefix')} {content[:200]}\n\n")
             console.print(f"  [{GREEN}]{_('cmd_export_to')} {export_path}[/]")
         except Exception as e:
             console.print(f"  [{RED}]{_('cmd_export_failed')} {e}[/]")
@@ -388,7 +396,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
                         label = _("think_effort_" + level)
                         console.print(f"  [{PURPLE}]{_('think_effort_set', level=label)}[/]")
                     else:
-                        console.print(f"  [{ORANGE}]/think effort <low|medium|high>[/]")
+                        console.print(f"  [{ORANGE}]{_('think_effort_usage')}[/]")
                 else:
                     current = state.reasoning_effort or "default"
                     console.print(f"  [{PURPLE}]{_('think_effort_current', level=current)}[/]")
@@ -470,13 +478,13 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         elif sub == "search":
             query = " ".join(parts[2:])
             if not query:
-                query = get_input(f"  [{CYAN}]Search: [/]").strip()
+                query = get_input(f"  [{CYAN}]{_('know_search_prompt')}[/] ").strip()
             if query:
                 results = kb.search(query, top_k=5)
                 if not results:
-                    console.print(f"  [{GRAY}]No matches[/]")
+                    console.print(f"  [{GRAY}]{_('know_no_matches_for')}[/]")
                 else:
-                    console.print(f"  [{CYAN}]━ Results ({len(results)})[/]")
+                    console.print(f"  [{CYAN}]{_('know_results_count', n=len(results))}[/]")
                     for i, r in enumerate(results, 1):
                         loc = f"{r['file']}:{r['start']}-{r['end']}"
                         console.print(f"  [{GREEN}]{i}. {loc}[/]  score={r['score']}")
@@ -490,7 +498,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         from . import plugin_manager
         parts = cmd.split()
         if len(parts) < 2:
-            console.print(f"  Usage: /plugin <list|info|enable|disable|create|reload>")
+            console.print(f"  {_('plugin_usage')}")
             return False
         sub = parts[1]
 
@@ -507,7 +515,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         elif sub == "create" and len(parts) >= 3:
             console.print(plugin_manager.create_plugin(parts[2]))
         else:
-            console.print(f"  Usage: /plugin <list|info|enable|disable|create|reload>")
+            console.print(f"  {_('plugin_usage')}")
         return False
 
     if cmd.startswith("/sandbox"):
@@ -519,7 +527,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         sub = parts[1]
         if sub == "on":
             path = _SandboxState.enable()
-            console.print(f"  [purple]{_('sandbox_enabled')}[/]  [gray]temp: {path}[/]")
+            console.print(f"  [purple]{_('sandbox_enabled', path=path)}[/]")
         elif sub == "off":
             _SandboxState.disable()
             console.print(f"  [gray]{_('sandbox_disabled')}[/]")
@@ -555,7 +563,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
                     console.print(f"  [{GRAY}]{_('interrupt_more_chars', n=len(sys_content) - 3000)}[/]")
                 console.print()
             else:
-                console.print(f"  [{GRAY}]No system prompt[/]")
+                console.print(f"  [{GRAY}]{_('ctx_no_system_prompt')}[/]")
         else:
             _show_context(messages, model, context_extra or {})
         return False
@@ -566,17 +574,17 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
             f = parts[1]
             if f in CommandState.pinned_files:
                 CommandState.pinned_files.discard(f)
-                console.print(f"  [{GRAY}]Unpinned: {f}[/]")
+                console.print(f"  [{GRAY}]{_('pin_unpinned', f=f)}[/]")
             else:
                 CommandState.pinned_files.add(f)
-                console.print(f"  [{GREEN}]Pinned: {f}[/]")
+                console.print(f"  [{GREEN}]{_('pin_pinned', f=f)}[/]")
         else:
             if CommandState.pinned_files:
-                console.print(f"  [{CYAN}]Pinned files:[/]")
+                console.print(f"  [{CYAN}]{_('pin_pinned_files')}[/]")
                 for f in sorted(CommandState.pinned_files):
                     console.print(f"    [{GRAY}]{f}[/]")
             else:
-                console.print(f"  [{GRAY}]No pinned files[/]")
+                console.print(f"  [{GRAY}]{_('pin_no_files')}[/]")
         return False
 
     if cmd == "/diff":
@@ -588,7 +596,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
             )
             out = r.stdout.strip() if r.stdout else ""
             if out:
-                console.print(f"  [{CYAN}]━━━ git diff ━━━[/]")
+                console.print(f"  [{CYAN}]{_('diff_header')}[/]")
                 for line in out.split("\n")[:80]:
                     console.print(f"  [{GRAY}]{line[:100]}[/]")
                 if out.count("\n") > 80:
@@ -614,7 +622,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
                 )
                 diff = (r2.stdout or "").strip()
             if not diff:
-                console.print(f"  [{GRAY}]No changes to review[/]")
+                console.print(f"  [{GRAY}]{_('review_no_changes')}[/]")
                 return False
         except Exception as e:
             console.print(f"  [{RED}]{e}[/]")
@@ -626,7 +634,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
             f"```diff\n{diff[:4000]}\n```"
         )
         messages.append({"role": "user", "content": review_prompt})
-        console.print(f"  [{GREEN}]Review requested ({len(diff)} chars of diff)[/]")
+        console.print(f"  [{GREEN}]{_('review_requested', len=len(diff))}[/]")
         return False
 
     if cmd == "/fix":
@@ -638,7 +646,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
                 last_error = c
                 break
         if not last_error:
-            console.print(f"  [{GRAY}]No recent error found in conversation[/]")
+            console.print(f"  [{GRAY}]{_('fix_no_error')}[/]")
             return False
 
         fix_prompt = (
@@ -646,14 +654,14 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
             f"Error:\n```\n{last_error[:2000]}\n```"
         )
         messages.append({"role": "user", "content": fix_prompt})
-        console.print(f"  [{GRAY}]Analysis request sent[/]")
+        console.print(f"  [{GRAY}]{_('fix_request_sent')}[/]")
         return False
 
     if cmd == "/rewind":
         if perform_rewind(messages):
             console.print(f"  [{PURPLE}]{_('rewind_done')}[/]")
         else:
-            console.print(f"  [{GRAY}]Nothing to rewind[/]")
+            console.print(f"  [{GRAY}]{_('rewind_nothing')}[/]")
         return False
 
     # Suggest closest known command
@@ -692,7 +700,7 @@ def _show_context(messages: list, model: str, extra: dict):
 
     console.print()
     console.print(f"  [{CYAN}]━ {_('context_title')}[/]")
-    console.print(f"    Model:        [{PURPLE}]{model}[/]")
+    console.print(f"    {_('ctx_model_label')}  [{PURPLE}]{model}[/]")
     console.print(f"    {_('msg_count')}:      {total_msgs} {' '.join(f'({r}: {c})' for r, c in counts.items())}")
     console.print(f"    {_('system_size')}: ~{sys_tokens} {_('token_estimate')}")
     console.print(f"    {_('token_estimate')}:  ~{total_tokens} {_('ctx_tokens')} ({sys_tokens} sys + {total_tokens - sys_tokens} chat)")
@@ -709,22 +717,22 @@ def _show_context(messages: list, model: str, extra: dict):
     if instructions:
         ins_len = len(instructions)
         ins_tokens = estimate_tokens(instructions)
-        console.print(f"    Instructions:  INSTRUCTIONS.md ({ins_len} {_('ctx_chars')}, ~{ins_tokens} {_('ctx_tokens')})")
+        console.print(f"    {_('ctx_instructions_label')} INSTRUCTIONS.md ({ins_len} {_('ctx_chars')}, ~{ins_tokens} {_('ctx_tokens')})")
     else:
         console.print(f"    Instructions:  [{GRAY}]{_('ctx_not_loaded')}[/]")
 
     project_map = extra.get("project_map", "")
     if project_map:
         pm_lines = project_map.count("\n") + 1
-        console.print(f"    Project map:   {pm_lines} lines (symbols + sizes)")
+        console.print(f"    {_('ctx_project_map_label')} {pm_lines} {_('ctx_lines_suffix')} (symbols + sizes)")
     else:
-        console.print(f"    Project map:   [{GRAY}]not generated[/]")
+        console.print(f"    {_('ctx_project_map_label')} [{GRAY}]{_('ctx_not_generated')}[/]")
 
     git = extra.get("git_context", "")
     if git:
         lines = git.count("\n") + 1
         branch = extra.get("git_branch", "?")
-        console.print(f"    {_('git_state')}:     branch: {branch} ({lines} lines)")
+        console.print(f"    {_('git_state')}:     {_('ctx_branch_label')} {branch} ({lines} {_('ctx_lines_suffix')})")
     else:
         console.print(f"    {_('git_state')}:     [{GRAY}]{_('ctx_no_git')}[/]")
     console.print()
@@ -733,7 +741,7 @@ def _show_context(messages: list, model: str, extra: dict):
 def _handle_git():
     """Run git commands interactively."""
     import subprocess
-    cmd = get_input(f"  git ")
+    cmd = get_input(f"  {_('git_prompt')}")
     if not cmd.strip():
         return
     try:
@@ -756,18 +764,18 @@ def _handle_git():
 def _handle_plan(task: str, messages: list):
     """Start a planning session for a multi-step task."""
     if not task:
-        console.print(f"  [{ORANGE}]Usage: /plan <task description>[/]")
-        console.print(f"  [{GRAY}]Example: /plan refactor the user module with tests[/]")
+        console.print(f"  [{ORANGE}]{_('plan_usage')}[/]")
+        console.print(f"  [{GRAY}]{_('plan_usage_example')}[/]")
         return
 
     from .mcp_client import init_all
     init_all()
 
-    console.print(f"\n  [{PURPLE}]╔══ Planning Mode ══╗[/]")
-    console.print(f"  [{PURPLE}]Task:[/] {task}")
-    console.print(f"  [{GRAY}]1. AI analyzes task and creates a numbered plan[/]")
-    console.print(f"  [{GRAY}]2. Executes each step with verification[/]")
-    console.print(f"  [{GRAY}]3. Uses batch_edit for atomic multi-file changes[/]")
+    console.print(f"\n  [{PURPLE}]{_('plan_header_mode')}[/]")
+    console.print(f"  [{PURPLE}]{_('plan_task_label')}[/] {task}")
+    console.print(f"  [{GRAY}]{_('plan_step_1')}[/]")
+    console.print(f"  [{GRAY}]{_('plan_step_2')}[/]")
+    console.print(f"  [{GRAY}]{_('plan_step_3')}[/]")
     console.print(f"  [{PURPLE}]╚{'═'*20}╝[/]")
 
     plan_prompt = (
@@ -785,7 +793,7 @@ def _handle_plan(task: str, messages: list):
         "Begin by outputting your plan."
     )
     messages.append({"role": "user", "content": f"/plan {task}\n\n{plan_prompt}"})
-    console.print(f"  [{GREEN}]Plan started. AI will analyze, plan, and execute step by step.[/]")
+    console.print(f"  [{GREEN}]{_('plan_started')}[/]")
 
 
 def _handle_mcp():
@@ -796,12 +804,12 @@ def _handle_mcp():
     )
 
     actions = [
-        ("list", "List connected servers & tools"),
-        ("add", "Add a new MCP server"),
-        ("remove", "Remove an MCP server"),
-        ("restart", "Restart all MCP servers"),
+        ("list", _("mcp_action_list")),
+        ("add", _("mcp_action_add")),
+        ("remove", _("mcp_action_remove")),
+        ("restart", _("mcp_action_restart")),
     ]
-    act = radio_select("MCP Manager", actions)
+    act = radio_select(_("mcp_manager_title"), actions)
     if not act:
         return
 
@@ -809,14 +817,14 @@ def _handle_mcp():
         servers = get_server_names()
         tools = get_tool_list()
         if not servers:
-            console.print(f"  [{GRAY}]No MCP servers running.[/]")
+            console.print(f"  [{GRAY}]{_('mcp_no_servers_running')}[/]")
             console.print(f"  [{GRAY}]{_('mcp_config_hint')}[/]")
         else:
-            console.print(f"\n  [{CYAN}]MCP Servers ({len(servers)})[/]")
+            console.print(f"\n  [{CYAN}]{_('mcp_servers_header', n=len(servers))}[/]")
             for s in servers:
                 console.print(f"    [{GREEN}]●[/] {s}")
             if tools:
-                console.print(f"\n  [{PURPLE}]Tools ({len(tools)})[/]")
+                console.print(f"\n  [{PURPLE}]{_('mcp_tools_header', n=len(tools))}[/]")
                 for t in tools:
                     n, d = t.get("name", "?"), t.get("description", "")[:60]
                     console.print(f"    [{GREEN}]{n}[/]  [{GRAY}]{d}[/]")
@@ -829,9 +837,9 @@ def _handle_mcp():
         cmd = get_input(f"  {_('mcp_command_prompt')} ").strip()
         if not cmd:
             return
-        args_str = get_input(f"  Arguments (space-separated): ").strip()
+        args_str = get_input(f"  {_('mcp_add_args')} ").strip()
         args = args_str.split() if args_str else []
-        env_str = get_input(f"  Env vars (KEY=val, optional): ").strip()
+        env_str = get_input(f"  {_('mcp_add_env')} ").strip()
         env = {}
         if env_str:
             for pair in env_str.split():
@@ -853,7 +861,7 @@ def _handle_mcp():
         if not servers:
             return
         items = [(str(i + 1), s.get("name", "?")) for i, s in enumerate(servers)]
-        pick = radio_select("Remove MCP server", items)
+        pick = radio_select(_("mcp_remove_title"), items)
         if not pick:
             return
         idx = int(pick) - 1
@@ -899,20 +907,20 @@ def _handle_search(keyword: str):
                 break  # one entry per file
 
     if not matches:
-        console.print(f"  [{GRAY}]No sessions match \"{keyword}\"[/]")
+        console.print(f"  [{GRAY}]{_('search_no_matches_for', kw=keyword)}[/]")
         return
 
-    console.print(f"  [{CYAN}]Found {len(matches)} session(s) matching \"{keyword}\"[/]")
+    console.print(f"  [{CYAN}]{_('search_found_matches', n=len(matches), kw=keyword)}[/]")
     pick = radio_select(f"{_('session_search_title')} {keyword}", items)
     if not pick:
         return
 
     data, path = matches[int(pick) - 1]
     actions = [
-        ("load", "Load this session"),
-        ("delete", "Delete"),
+        ("load", _("search_action_load")),
+        ("delete", _("search_action_delete")),
     ]
-    act = radio_select(f"Session: {path.stem[:20]} — {len(data)} msgs", actions)
+    act = radio_select(_("search_session_label", name=path.stem[:20], n=len(data)), actions)
 
     if act == "load":
         CommandState.session_load_requested = True
@@ -934,7 +942,7 @@ def _show_history(messages, context_extra):
         console.print(f"  [{GRAY}]{_('session_no_conversation')}[/]")
         return
 
-    console.print(f"  [{GRAY}]── Conversation ({len(user_msgs)} msgs) ──[/]")
+    console.print(f"  [{GRAY}]{_('history_conversation_header', n=len(user_msgs))}[/]")
     for msg in user_msgs:
         role = msg["role"]
         content = msg.get("content", "")
@@ -979,7 +987,7 @@ def _handle_sessions():
             dt = ts
         items.append((key, f"{dt}  ({count} msgs)"))
 
-    pick = radio_select("Sessions", items)
+    pick = radio_select(_("session_list_title"), items)
     if not pick:
         return
 
@@ -988,11 +996,11 @@ def _handle_sessions():
         return
 
     actions = [
-        ("load", "Load this session"),
-        ("delete", "Delete"),
+        ("load", _("search_action_load")),
+        ("delete", _("search_action_delete")),
     ]
 
-    act = radio_select(f"Session: {path.stem[:20]} — {len(data)} msgs", actions)
+    act = radio_select(_("search_session_label", name=path.stem[:20], n=len(data)), actions)
 
     if act == "load":
         CommandState.session_load_requested = True

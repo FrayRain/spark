@@ -264,15 +264,20 @@ def _cosine_sim(a: dict[str, float], b: dict[str, float]) -> float:
 # Sentence-transformers integration (optional upgrade)
 # ---------------------------------------------------------------------------
 
+_ST_MODEL = None
+
+
 def _try_st_embed(texts: list[str]) -> list[list[float]] | None:
     """Try embedding with sentence-transformers. Returns None if not installed."""
+    global _ST_MODEL
     try:
         from sentence_transformers import SentenceTransformer
     except ImportError:
         return None
     try:
-        model = SentenceTransformer("all-MiniLM-L6-v2")
-        vectors = model.encode(texts, normalize_embeddings=True, show_progress_bar=False)
+        if _ST_MODEL is None:
+            _ST_MODEL = SentenceTransformer("all-MiniLM-L6-v2")
+        vectors = _ST_MODEL.encode(texts, normalize_embeddings=True, show_progress_bar=False)
         return vectors.tolist()
     except Exception:
         return None

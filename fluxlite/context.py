@@ -107,17 +107,17 @@ def build_git_context() -> str:
         status_out, _ = proc_status.communicate(timeout=5)
         log_out, _ = proc_log.communicate(timeout=5)
 
-        branch = branch_out.strip()
+        branch = (branch_out or "").strip()
         if not branch or branch.startswith("fatal"):
             return ""
 
         parts = [f"Branch: {branch}"]
 
-        status = status_out.strip()
+        status = (status_out or "").strip()
         if status:
             parts.append(f"Status:\n{status}")
 
-        log = log_out.strip()
+        log = (log_out or "").strip()
         if log:
             parts.append(f"Recent:\n{log}")
 

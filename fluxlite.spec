@@ -5,8 +5,8 @@ a = Analysis(
     ['fluxlite\\__main__.py'],
     pathex=[],
     binaries=[],
-    datas=[('fluxlite', 'fluxlite')],
-    hiddenimports=['fluxlite', 'fluxlite.main', 'fluxlite.app', 'fluxlite.commands', 'fluxlite.console', 'fluxlite.config', 'fluxlite.context', 'fluxlite.i18n', 'fluxlite.startup', 'fluxlite.styles', 'fluxlite.wizard', 'fluxlite.plugin_api', 'fluxlite.plugin_manager', 'fluxlite.profile', 'fluxlite.memory', 'fluxlite.mcp_client', 'fluxlite.tools', 'fluxlite.provider'],
+    datas=[],
+    hiddenimports=[],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
@@ -35,5 +35,4 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['logo_256x256.ico'],
 )
