@@ -22,6 +22,7 @@ from .profile import load_profile, save_profile
 from .commands import CommandState, handle_command, MODEL_PRESETS, perform_rewind
 from .console import console, read_multiline as read_input, get_input as _ask_input, radio_select, check_rewind_flag
 from .project_rules import load_rules, format_rules_block
+from .usage import get_tracker, reset_turn as reset_usage_turn
 
 HISTORY_DIR = Path.home() / ".fluxlite" / "history"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
@@ -257,7 +258,7 @@ from .context import (
 
 
 _confirmed_tools: set[str] = set()
-_cumulative_tokens = {"input": 0, "output": 0}
+_usage_tracker = get_tracker()
 _NON_PARALLEL_TOOLS = frozenset({"terminal", "browser", "mcp_call", "hook_run", "spawn_agents"})
 
 _MODEL_MAX_TOKENS: dict[str, int] = {
@@ -809,6 +810,9 @@ def run_app(
                 break
             continue
 
+        # Reset per-turn usage tracker
+        _usage_tracker.reset_turn()
+
         messages.append({"role": "user", "content": user_input})
         _print_user(user_input)
 
@@ -831,25 +835,20 @@ def run_app(
                 break
 
             if CommandState.show_token_usage and last_usage:
-                usage_str = ""
-                if "prompt_tokens" in last_usage:
-                    _cumulative_tokens["input"] += last_usage["prompt_tokens"]
-                    usage_str += _("token_in", value=last_usage['prompt_tokens'])
-                elif "input_tokens" in last_usage:
-                    _cumulative_tokens["input"] += last_usage["input_tokens"]
-                    usage_str += _("token_in", value=last_usage['input_tokens'])
-                if "completion_tokens" in last_usage:
-                    _cumulative_tokens["output"] += last_usage["completion_tokens"]
-                    usage_str += _("token_out", value=last_usage['completion_tokens'])
-                elif "output_tokens" in last_usage:
-                    _cumulative_tokens["output"] += last_usage["output_tokens"]
-                    usage_str += _("token_out", value=last_usage['output_tokens'])
-                if usage_str:
-                    total = _cumulative_tokens["input"] + _cumulative_tokens["output"]
+                inp = last_usage.get("prompt_tokens") or last_usage.get("input_tokens") or 0
+                out = last_usage.get("completion_tokens") or last_usage.get("output_tokens") or 0
+                cache_read = last_usage.get("cache_read_input_tokens") or 0
+                if inp or out:
+                    _usage_tracker.add(input_tokens=inp, output_tokens=out, cache_read=cache_read)
+                    usage_str = _usage_tracker.format_usage(_usage_tracker.turn)
+                    cost_str = _usage_tracker.format_cost(_usage_tracker.turn, model)
+                    sess = _usage_tracker.session
+                    total = sess.input_tokens + sess.output_tokens
                     max_tok = _get_max_tokens(model)
                     bar = _render_progress_bar(total, max_tok)
-                    console.print(f"  [{DIM}]\u2502 {usage_str}[/]")
-                    console.print(f"  [{DIM}]\u2502 {_('cumulative')}: {_('token_in', value=_cumulative_tokens['input'])} + {_('token_out', value=_cumulative_tokens['output'])}[/]  [{CYAN}]{bar}[/]")
+                    session_cost = _usage_tracker.format_cost(_usage_tracker.session, model)
+                    console.print(f"  [{DIM}]│ {usage_str}  [blue]≈{cost_str}[/][/]")
+                    console.print(f"  [{DIM}]│ ∑ in {sess.input_tokens} + out {sess.output_tokens}  [blue]≈{session_cost}[/]  [{CYAN}]{bar}[/][/]")
                     if total > max_tok * 0.8:
                         console.print(f"  [{ORANGE}]! {_('main_context_warning', total=total, max_tok=max_tok)}[/]")
                     if total > max_tok * 0.88:

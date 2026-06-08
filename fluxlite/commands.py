@@ -13,6 +13,7 @@ from .profile import load_profile, save_profile, add_rule as profile_add_rule
 from .startup import print_header
 from .memory import load_memories, save_memories
 from .console import console, get_input, radio_select
+from .usage import get_tracker
 
 
 MODEL_PRESETS = {
@@ -196,6 +197,7 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         console.print(f"    [{GREEN}]/toolresult[/]   {_('toolresult_desc')}")
         console.print(f"    [{GREEN}]/export[/]       {_('export_desc')}")
         console.print(f"    [{GREEN}]/token[/]        {_('token_desc')}")
+        console.print(f"    [{GREEN}]/usage[/]        Show detailed token usage and cost")
         console.print(f"    [{GREEN}]/truncate[/]     {_('truncate_desc')}")
         console.print(f"    [{GREEN}]/rewind[/]      {_('rewind_desc')}")
         console.print(f"    [{GREEN}]/context[/]     {_('context_desc')}")
@@ -371,6 +373,28 @@ def handle_command(cmd: str, messages: list, model: str, provider, context_extra
         status = "on" if state.show_token_usage else "off"
         console.print(f"  [{'PURPLE' if state.show_token_usage else 'GRAY'}]{_('cmd_token_display')} {status}[/]")
         state.save()
+        return False
+
+    if cmd == "/usage":
+        tracker = get_tracker()
+        sess = tracker.session
+        turn = tracker.turn
+        console.print()
+        console.print(f"  [{CYAN}]╌ Usage ──────────────────────────────────────[/]")
+        console.print(f"  [{DIM}]│ This turn:[/]")
+        console.print(f"  [{DIM}]│   Input:   {turn.input_tokens:>8} tokens[/]")
+        console.print(f"  [{DIM}]│   Output:  {turn.output_tokens:>8} tokens[/]")
+        cost_turn = tracker.format_cost(turn, model)
+        console.print(f"  [{DIM}]│   Cost:    {cost_turn:>10}[/]")
+        console.print(f"  [{DIM}]│[/]")
+        console.print(f"  [{DIM}]│ Session:[/]")
+        console.print(f"  [{DIM}]│   Input:   {sess.input_tokens:>8} tokens[/]")
+        console.print(f"  [{DIM}]│   Output:  {sess.output_tokens:>8} tokens[/]")
+        total = sess.input_tokens + sess.output_tokens
+        cost_sess = tracker.format_cost(sess, model)
+        console.print(f"  [{DIM}]│   Total:   {total:>8} tokens[/]")
+        console.print(f"  [{DIM}]│   Cost:    {cost_sess:>10}[/]")
+        console.print(f"  [{CYAN}]╌{'─'*48}[/]")
         return False
 
     if cmd.startswith("/think"):

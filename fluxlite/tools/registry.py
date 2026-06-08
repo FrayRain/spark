@@ -534,13 +534,16 @@ TOOLS = [
     ),
     ToolDef(
         name="search_replace",
-        description="Search and replace a pattern across multiple files. Supports dry-run to preview changes first. Uses simple string matching (not regex)",
+        description="Search and replace a pattern across multiple files. Supports exact, regex, and fuzzy matching. Use dry_run to preview. Context lines show surrounding code in dry-run mode.",
         parameters=_make_params(
             pattern={"type": "string", "desc": "Text to search for"},
             replacement={"type": "string", "desc": "Replacement text"},
             glob={"type": "string", "desc": "File glob pattern (default **/*)", "optional": True},
             path={"type": "string", "desc": "Root directory (default current)", "optional": True},
             dry_run={"type": "boolean", "desc": "Preview only, no changes (default false)", "optional": True},
+            regex={"type": "boolean", "desc": "Use regex matching (default false)", "optional": True},
+            fuzzy={"type": "boolean", "desc": "Use fuzzy matching for similar but not exact text (default false)", "optional": True},
+            context_lines={"type": "number", "desc": "Lines of context to show in dry-run output (default 0)", "optional": True},
         ),
         handler=search_replace_mod.search_replace_handler,
     ),
