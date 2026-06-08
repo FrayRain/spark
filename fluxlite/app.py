@@ -21,6 +21,7 @@ from .provider import create_provider
 from .profile import load_profile, save_profile
 from .commands import CommandState, handle_command, MODEL_PRESETS, perform_rewind
 from .console import console, read_multiline as read_input, get_input as _ask_input, radio_select, check_rewind_flag
+from .project_rules import load_rules, format_rules_block
 
 HISTORY_DIR = Path.home() / ".fluxlite" / "history"
 HISTORY_DIR.mkdir(parents=True, exist_ok=True)
@@ -151,6 +152,12 @@ def build_system_prompt(lang: str, safe_mode: bool, tools: list, profile: dict =
     personality = identity.get("personality", "")
     rules_list = profile.get("rules", [])
 
+    # ── Project rules (SPARK.md) ──
+    project_rules_content = load_rules()
+    project_rules_block = ""
+    if project_rules_content:
+        project_rules_block = format_rules_block(project_rules_content, lang)
+
     identity_block = ""
     if identity.get("name"):
         if lang == "zh":
@@ -174,7 +181,7 @@ def build_system_prompt(lang: str, safe_mode: bool, tools: list, profile: dict =
             rules_block = "\n\nUser rules:\n" + "\n".join(f"- {r}" for r in rules_list)
 
     if lang == "zh":
-        return f"""你是 {agent_name}，一个运行在终端的轻量级 AI agent。由 Volsa 开发，你的GitHub 仓库是 https://github.com/SVolsa/fluxlite。
+        return f"""你是 {agent_name}，一个运行在终端的轻量级 AI agent。基于 fluxlite 开发，你的 GitHub 仓库是 https://github.com/FrayRain/spark。
 你可以使用以下工具：
 
 {tool_desc}
@@ -203,9 +210,9 @@ MCP (外部服务集成):
 - 每次修改文件后确认语法正确
 - 回复简洁直接
 - 用中文回答
-- 对于不确定的概念或事物禁止臆想，如果用户了解可以询问用户，或者使用工具搜索相关资料{identity_block}{rules_block}"""
+|- 对于不确定的概念或事物禁止臆想，如果用户了解可以询问用户，或者使用工具搜索相关资料{identity_block}{rules_block}{project_rules_block}"""
 
-    return f"""You are {agent_name}, a lightweight AI agent running in the terminal.Developed by Volsa, your GitHub repository is https://github.com/SVolsa/fluxlite.
+    return f"""You are {agent_name}, a lightweight AI agent running in the terminal. Forked from fluxlite, your GitHub repository is https://github.com/FrayRain/spark.
 Available tools:
 
 {tool_desc}
@@ -234,7 +241,7 @@ Rules:
 - Verify syntax after modifying files
 - Keep responses concise
 - Answer in English
-- Do not speculate about uncertain concepts or matters; if the user is aware, you may ask the user, or use tools to search for related information.{identity_block}{rules_block}"""
+- Do not speculate about uncertain concepts or matters; if the user is aware, you may ask the user, or use tools to search for related information.{identity_block}{rules_block}{project_rules_block}"""
 
 
 from .context import (

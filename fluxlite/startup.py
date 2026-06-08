@@ -29,7 +29,7 @@ TIPS = [
     "Try /help to see all available commands",
     "Use /plan for multi-step tasks with auto-review",
     "/memory saves important info across sessions",
-    "Plugins extend FluxLite with custom tools",
+    "Plugins extend Spark with custom tools",
     "Double-press Esc to cancel AI response",
     "Use /search to find past conversations",
     "/sandbox isolates file operations for safety",
@@ -38,6 +38,7 @@ TIPS = [
     "/sessions saves and restores conversations",
     "Use /mcp to connect external services",
     "Customize behavior with /rules",
+    "SPARK.md in project root adds custom rules for the AI",
 ]
 
 _tip_index = 0

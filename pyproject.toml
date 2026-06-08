@@ -3,15 +3,14 @@ requires = ["setuptools"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "fluxlite"
-version = "0.6.0"
-description = "Lightweight terminal-native AI coding agent with plugins, MCP, sandbox, and 34+ built-in tools"
+name = "spark"
+version = "0.1.0"
+description = "Lightweight terminal-native AI coding agent — fork of fluxlite with SPARK.md project rules"
 readme = "README.md"
 requires-python = ">=3.9"
 license = {text = "MIT"}
 authors = [
-    {name = "Volsa"},
-    {name = "Claude (AI)"},
+    {name = "FrayRain"},
 ]
 keywords = ["cli", "ai", "agent", "llm", "assistant", "terminal"]
 classifiers = [
@@ -44,13 +43,11 @@ playwright = ["playwright>=1.40.0"]
 knowledge = ["sentence-transformers>=2.2.0", "numpy>=1.21.0"]
 
 [project.urls]
-Homepage = "https://github.com/SVolsa/fluxlite"
-Repository = "https://github.com/SVolsa/fluxlite"
+Homepage = "https://github.com/FrayRain/spark"
+Repository = "https://github.com/FrayRain/spark"
 
 [project.scripts]
-fluxlite = "fluxlite.main:main"
+spark = "fluxlite.main:main"
 
 [tool.setuptools.packages.find]
 include = ["fluxlite*"]
-
-
